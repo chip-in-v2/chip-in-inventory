@@ -350,6 +350,8 @@ pub struct RequireAuthentication {
     pub oidc_authorization_endpoint: String,
     pub oidc_redirect_url: String,
     pub oidc_token_endpoint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oidc_dialect: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
