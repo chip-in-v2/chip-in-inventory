@@ -9,6 +9,7 @@
 
 mod models;
 mod repository;
+mod config;
 
 use axum::{
     Json, Router,
@@ -60,10 +61,14 @@ async fn main() {
     let etcd_endpoints_str =
         env::var("ETCD_ENDPOINTS").unwrap_or_else(|_| "http://127.0.0.1:2379".to_string());
     let etcd_endpoints: Vec<&str> = etcd_endpoints_str.split(',').collect();
+    let config_path =
+        env::var("CONFIG_FILE").unwrap_or_else(|_| "conf/config.yaml".to_string());
 
     let repository = EtcdRepository::new(&etcd_endpoints)
         .await
         .expect("Failed to connect to etcd");
+
+    config::load_initial_config(&repository, &config_path).await;
 
     let ui_routes = Router::new()
         // Web UI
