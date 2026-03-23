@@ -22,7 +22,8 @@ The technology stack includes Rust for the programming language and etcd for the
 To get the application running locally, you need to have Docker and Docker Compose installed.
 
 1.  **Start the services:**
-    This command will build the Rust application, start the `etcd` server, and run a one-shot importer to populate the database with sample data from `data/sample.yaml`.
+    This command will build the Rust application and start the `etcd` server.
+    On startup, the application automatically loads the initial configuration from `conf/config.yaml` into the database.
 
     ```bash
     docker compose up -d

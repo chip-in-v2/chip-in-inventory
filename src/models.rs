@@ -32,6 +32,12 @@ pub struct Realm {
     pub updated_at: DateTime<Utc>,
 }
 
+impl Realm {
+    pub fn generate_urn(name: &str) -> String {
+        format!("urn:chip-in:realm:{}", name)
+    }
+}
+
 /// Structure used as a request body when creating a new Realm
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +107,12 @@ pub struct Zone {
     pub updated_at: DateTime<Utc>,
 }
 
+impl Zone {
+    pub fn generate_urn(realm: &str, name: &str) -> String {
+        format!("urn:chip-in:zone:{}:{}", realm, name)
+    }
+}
+
 /// Structure used as a request body when creating a new Zone
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -161,6 +173,12 @@ pub struct Subdomain {
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
+}
+
+impl Subdomain {
+    pub fn generate_urn(realm: &str, zone: &str, name: &str) -> String {
+        format!("urn:chip-in:subdomain:{}:{}:{}", realm, zone, name)
+    }
 }
 
 /// Structure for creating a new Subdomain
@@ -231,6 +249,12 @@ pub struct VirtualHost {
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
+}
+
+impl VirtualHost {
+    pub fn generate_urn(realm: &str, name: &str) -> String {
+        format!("urn:chip-in:virtual-host:{}:{}", realm, name)
+    }
 }
 
 /// Structure representing VirtualHost information for API responses, including derived fields.
@@ -463,6 +487,12 @@ pub struct Hub {
     pub updated_at: DateTime<Utc>,
 }
 
+impl RoutingChain {
+    pub fn generate_urn(realm: &str, name: &str) -> String {
+        format!("urn:chip-in:routing-chain:{}:{}", realm, name)
+    }
+}
+
 /// Structure used as a request body when creating a new Hub
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -484,6 +514,12 @@ pub struct NewHub {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt", default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+impl Hub {
+    pub fn generate_urn(realm: &str, name: &str) -> String {
+        format!("urn:chip-in:network:{}:{}", realm, name)
+    }
 }
 
 /// Structure used as a request body when updating a Hub
@@ -530,6 +566,12 @@ pub struct Service {
     pub created_at: DateTime<Utc>,
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
+}
+
+impl Service {
+    pub fn generate_urn(realm: &str, hub: &str, name: &str) -> String {
+        format!("urn:chip-in:service:{}:{}:{}", realm, hub, name)
+    }
 }
 
 /// Structure representing AvailabilityManagement information

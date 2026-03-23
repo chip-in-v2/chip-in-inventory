@@ -215,12 +215,9 @@ impl IntoResponse for ApiError {
 
 /// Helper to populate read-only fields for a Service
 fn populate_service_fields(service: &mut Service, realm_id: &str, hub_id: &str) {
-    service.urn = format!(
-        "urn:chip-in:service:{}:{}:{}",
-        realm_id, hub_id, service.name
-    );
-    service.hub = format!("urn:chip-in:network:{}:{}", realm_id, hub_id);
-    service.realm = format!("urn:chip-in:realm:{}", realm_id);
+    service.urn = Service::generate_urn(realm_id, hub_id, &service.name);
+    service.hub = Hub::generate_urn(realm_id, hub_id);
+    service.realm = Realm::generate_urn(realm_id);
 }
 // --- Realm Handlers ---
 
@@ -246,7 +243,7 @@ async fn create_realm(
         name: payload.name.clone(),
         description: payload.description,
         title: payload.title,
-        urn: Some(format!("urn:chip-in:realm:{}", payload.name)),
+        urn: Some(Realm::generate_urn(&payload.name)),
         cacert: payload.cacert,
         device_id_signing_key: payload.device_id_signing_key,
         device_id_verification_key: payload.device_id_verification_key,
@@ -534,17 +531,14 @@ async fn delete_hub(
 
 /// Helper to populate read-only fields for a Hub
 fn populate_hub_fields(hub: &mut Hub, realm_id: &str) {
-    hub.urn = Some(format!("urn:chip-in:network:{}:{}", realm_id, hub.name));
-    hub.realm = Some(format!("urn:chip-in:realm:{}", realm_id));
+    hub.urn = Some(Hub::generate_urn(realm_id, &hub.name));
+    hub.realm = Some(Realm::generate_urn(realm_id));
 }
 
 /// Helper to populate read-only fields for a RoutingChain
 fn populate_routing_chain_fields(rchain: &mut RoutingChain, realm_id: &str) {
-    rchain.urn = Some(format!(
-        "urn:chip-in:routing-chain:{}:{}",
-        realm_id, rchain.name
-    ));
-    rchain.realm = Some(format!("urn:chip-in:realm:{}", realm_id));
+    rchain.urn = Some(RoutingChain::generate_urn(realm_id, &rchain.name));
+    rchain.realm = Some(Realm::generate_urn(realm_id));
 }
 
 // --- RoutingChain Handlers ---
@@ -709,12 +703,9 @@ async fn resolve_vhost_fqdn(
 
 /// Helper to populate read-only fields for a Subdomain
 fn populate_subdomain_fields(subdomain: &mut Subdomain, realm_id: &str, zone_id: &str) {
-    subdomain.urn = Some(format!(
-        "urn:chip-in:subdomain:{}:{}:{}",
-        realm_id, zone_id, subdomain.name
-    ));
-    subdomain.realm = Some(format!("urn:chip-in:realm:{}", realm_id));
-    subdomain.zone = Some(format!("urn:chip-in:zone:{}:{}", realm_id, zone_id));
+    subdomain.urn = Some(Subdomain::generate_urn(realm_id, zone_id, &subdomain.name));
+    subdomain.realm = Some(Realm::generate_urn(realm_id));
+    subdomain.zone = Some(Zone::generate_urn(realm_id, zone_id));
     subdomain.fqdn = Some(if subdomain.name == "@" {
         zone_id.to_string()
     } else {
@@ -724,8 +715,8 @@ fn populate_subdomain_fields(subdomain: &mut Subdomain, realm_id: &str, zone_id:
 
 /// Helper to populate read-only fields for a Zone
 fn populate_zone_fields(zone: &mut Zone, realm_id: &str) {
-    zone.urn = Some(format!("urn:chip-in:zone:{}:{}", realm_id, zone.name));
-    zone.realm = Some(format!("urn:chip-in:realm:{}", realm_id));
+    zone.urn = Some(Zone::generate_urn(realm_id, &zone.name));
+    zone.realm = Some(Realm::generate_urn(realm_id));
 }
 
 impl VirtualHost {
@@ -768,11 +759,8 @@ async fn create_virtual_host(
         name: vhost_name.clone(), // No change, but for clarity
         description: payload.description,
         title: payload.title,
-        realm: Some(format!("urn:chip-in:realm:{}", realm_id)),
-        urn: Some(format!(
-            "urn:chip-in:virtual-host:{}:{}",
-            realm_id, &vhost_name
-        )),
+        realm: Some(Realm::generate_urn(&realm_id)),
+        urn: Some(VirtualHost::generate_urn(&realm_id, &vhost_name)),
         subdomain: payload.subdomain,
         access_log_recorder: payload.access_log_recorder,
         access_log_max_value_length: payload.access_log_max_value_length,
@@ -1040,7 +1028,7 @@ async fn update_zone(
     zone.title = payload.title;
     zone.dns_provider = payload.dns_provider;
     zone.acme_certificate_provider = payload.acme_certificate_provider;
-    zone.realm = Some(format!("urn:chip-in:realm:{}", realm_id));
+    zone.realm = Some(Realm::generate_urn(&realm_id));
     zone.created_at = payload.created_at.unwrap_or(zone.created_at); // Preserve original if not provided
     zone.updated_at = payload.updated_at.unwrap_or_else(chrono::Utc::now); // Use provided or now
 
