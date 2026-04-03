@@ -1,3 +1,8 @@
+/// Data models for the inventory repository.
+///
+/// Defines structures and logic for Realms, Zones, Hubs, and other
+/// resources according to the Chip-in inventory specification.
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -178,6 +183,25 @@ pub struct Subdomain {
 impl Subdomain {
     pub fn generate_urn(realm: &str, zone: &str, name: &str) -> String {
         format!("urn:chip-in:subdomain:{}:{}:{}", realm, zone, name)
+    }
+
+    /// Generates FQDN based on subdomain name and zone name
+    pub fn generate_fqdn(zone_name: &str, name: &str) -> String {
+        if name == "@" {
+            zone_name.to_string()
+        } else {
+            format!("{}.{}", name, zone_name)
+        }
+    }
+
+    /// Parses a subdomain URN into (realm, zone, name)
+    pub fn parse_urn(urn: &str) -> Option<(String, String, String)> {
+        let parts: Vec<&str> = urn.split(':').collect();
+        if parts.len() == 6 && parts[0] == "urn" && parts[1] == "chip-in" && parts[2] == "subdomain" {
+            Some((parts[3].to_string(), parts[4].to_string(), parts[5].to_string()))
+        } else {
+            None
+        }
     }
 }
 

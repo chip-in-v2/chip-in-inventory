@@ -1,11 +1,9 @@
-// This is a repository server for spn infrastructure system.
-//
-// It provides the following features:
-// - Stores and manages inventory information via a RESTful API.
-// - Offers a simple web UI for browsing and editing the inventory.
-// - The data models for the repository are defined at:
-//   https://github.com/chip-in-v2/docusaurus/tree/main/root/openapi/inventory
-// - It uses etcd as the backend data store.
+/// Repository server for the SPN infrastructure system.
+///
+/// Provides a RESTful API and Web UI to manage inventory information,
+/// using etcd as the backend data store.
+/// The data models for the repository are defined at:
+///   https://github.com/chip-in-v2/docusaurus/tree/main/root/openapi/inventory
 
 mod models;
 mod repository;
@@ -68,7 +66,9 @@ async fn main() {
         .await
         .expect("Failed to connect to etcd");
 
-    config::load_initial_config(&repository, &config_path).await;
+    config::load_initial_config(&repository, &config_path)
+        .await
+        .expect("Failed to load initial configuration");
 
     let ui_routes = Router::new()
         // Web UI
@@ -176,7 +176,7 @@ async fn shutdown_signal() {
 
 // Error handling
 #[derive(Debug, Error)]
-enum ApiError {
+pub enum ApiError {
     #[error("etcd client error: {0}")]
     Etcd(#[from] etcd_client::Error),
     #[error("json serialization/deserialization error: {0}")]
@@ -686,15 +686,10 @@ async fn resolve_vhost_fqdn(
     subdomain_urn: &str,
     _vhost_name: &str, // The vhost name is not part of the FQDN in this model
 ) -> Result<Option<String>, ApiError> {
-    // Correct URN format: urn:chip-in:subdomain:{realm-name}:{zone-name}:{subdomain-name}
-    let parts: Vec<&str> = subdomain_urn.split(':').collect();
-    if parts.len() == 6 && parts[0] == "urn" && parts[1] == "chip-in" && parts[2] == "subdomain" {
-        let realm_name = parts[3];
-        let zone_name = parts[4];
-        let subdomain_name = parts[5];
-
+    // Use unified URN parsing logic from models
+    if let Some((realm_name, zone_name, subdomain_name)) = Subdomain::parse_urn(subdomain_urn) {
         // The get_subdomain handler populates the `fqdn` field based on the zone and subdomain names.
-        if let Ok(subdomain) = repo.get_subdomain(realm_name, zone_name, subdomain_name).await {
+        if let Ok(subdomain) = repo.get_subdomain(&realm_name, &zone_name, &subdomain_name).await {
             return Ok(subdomain.fqdn);
         }
     }
@@ -706,11 +701,7 @@ fn populate_subdomain_fields(subdomain: &mut Subdomain, realm_id: &str, zone_id:
     subdomain.urn = Some(Subdomain::generate_urn(realm_id, zone_id, &subdomain.name));
     subdomain.realm = Some(Realm::generate_urn(realm_id));
     subdomain.zone = Some(Zone::generate_urn(realm_id, zone_id));
-    subdomain.fqdn = Some(if subdomain.name == "@" {
-        zone_id.to_string()
-    } else {
-        format!("{}.{}", subdomain.name, zone_id)
-    });
+    subdomain.fqdn = Some(Subdomain::generate_fqdn(zone_id, &subdomain.name));
 }
 
 /// Helper to populate read-only fields for a Zone

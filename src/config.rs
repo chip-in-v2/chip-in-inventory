@@ -1,6 +1,7 @@
-// load initial config module on start up
-//
-// /home/kai/chip-in-inventory/src/config.rs
+/// Configuration loader and initial data population logic.
+///
+/// Handles reading the YAML configuration file and synchronizing the
+/// initial state with the etcd backend during application startup.
 
 use crate::models::{
     Hub, NewHub, NewRealm, NewRoutingChain, NewService, NewSubdomain, NewVirtualHost, NewZone,
@@ -10,21 +11,21 @@ use crate::repository::EtcdRepository;
 use serde::Deserialize;
 use std::path::Path;
 use tracing::info;
+use crate::ApiError;
 
 #[derive(Deserialize)]
 struct Config {
     realms: Vec<RealmConfig>,
 }
 
-fn validate_urn(resource_type: &str, name: &str, yaml_urn: Option<&String>, generated_urn: &str) {
+fn validate_urn(resource_type: &str, name: &str, yaml_urn: Option<&String>, generated_urn: &str) -> Result<(), ApiError> {
     if let Some(urn) = yaml_urn {
         if urn != generated_urn {
             let msg = format!(
                 "URN mismatch for {} '{}': config.yaml has '{}', but generated URN is '{}'.",
                 resource_type, name, urn, generated_urn
             );
-            tracing::error!("{}", msg);
-            panic!("{}", msg);
+            return Err(ApiError::BadRequest(msg));
         }
     } else {
         tracing::warn!(
@@ -34,6 +35,7 @@ fn validate_urn(resource_type: &str, name: &str, yaml_urn: Option<&String>, gene
             generated_urn
         );
     }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -97,7 +99,7 @@ struct RoutingChainConfig {
     urn: Option<String>,
 }
 
-pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
+pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Result<(), ApiError> {
     let path = Path::new(&config_path);
 
     if !path.exists() {
@@ -105,25 +107,19 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
             "Config file not found at {:?}, skipping initial population.",
             path
         );
-        return;
+        return Ok(());
     }
 
     info!("Loading initial configuration from {:?}", path);
-    let content = match tokio::fs::read_to_string(path).await {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to read config file: {}", e);
-            return;
-        }
-    };
+    let content = tokio::fs::read_to_string(path).await.map_err(|e| {
+        tracing::error!("Failed to read config file: {}", e);
+        ApiError::BadRequest(e.to_string())
+    })?;
 
-    let config: Config = match serde_yaml::from_str(&content) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to parse config file: {}", e);
-            return;
-        }
-    };
+    let config: Config = serde_yaml::from_str(&content).map_err(|e| {
+        tracing::error!("Failed to parse config file: {}", e);
+        ApiError::BadRequest(e.to_string())
+    })?;
 
     for realm_config in config.realms {
         let now = chrono::Utc::now();
@@ -133,7 +129,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
             &realm_config.base.name,
             realm_config.urn.as_ref(),
             &realm_urn,
-        );
+        )?;
         let realm = Realm {
             name: realm_config.base.name.clone(),
             title: realm_config.base.title,
@@ -150,10 +146,10 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
             updated_at: realm_config.base.updated_at.unwrap_or(now),
         };
 
-        if let Err(e) = repo.save_realm(&realm).await {
+        repo.save_realm(&realm).await.map_err(|e| {
             tracing::error!("Failed to save realm {}: {}", realm.name, e);
-            continue;
-        }
+            e
+        })?;
         info!("Initialized realm: {}", realm.name);
 
         // Zones
@@ -164,7 +160,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 &zone_config.base.name,
                 zone_config.urn.as_ref(),
                 &zone_urn,
-            );
+            )?;
             let zone = Zone {
                 name: zone_config.base.name.clone(),
                 title: zone_config.base.title,
@@ -176,9 +172,10 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 created_at: zone_config.base.created_at.unwrap_or(now),
                 updated_at: zone_config.base.updated_at.unwrap_or(now),
             };
-            if let Err(e) = repo.save_zone(&realm.name, &zone).await {
+            repo.save_zone(&realm.name, &zone).await.map_err(|e| {
                 tracing::error!("Failed to save zone {}: {}", zone.name, e);
-            }
+                e
+            })?;
 
             // Subdomains
             for sub_config in zone_config.subdomains {
@@ -192,12 +189,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                     &sub_config.base.name,
                     sub_config.urn.as_ref(),
                     &sub_urn,
-                );
-                let fqdn = if sub_config.base.name == "@" {
-                    zone.name.clone()
-                } else {
-                    format!("{}.{}", sub_config.base.name, zone.name)
-                };
+                )?;
                 let subdomain = Subdomain {
                     name: sub_config.base.name.clone(),
                     title: sub_config.base.title,
@@ -205,18 +197,18 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                     realm: sub_config.base.realm,
                     destination_realm: sub_config.base.destination_realm,
                     share_cookie: sub_config.base.share_cookie,
-                    fqdn: Some(fqdn),
+                    fqdn: Some(Subdomain::generate_fqdn(&zone.name, &sub_config.base.name)),
                     zone: Some(Zone::generate_urn(&realm.name, &zone.name)),
                     urn: Some(sub_urn),
                     created_at: sub_config.base.created_at.unwrap_or(now),
                     updated_at: sub_config.base.updated_at.unwrap_or(now),
                 };
-                if let Err(e) = repo
-                    .save_subdomain(&realm.name, &zone.name, &subdomain)
+                repo.save_subdomain(&realm.name, &zone.name, &subdomain)
                     .await
-                {
-                    tracing::error!("Failed to save subdomain {}: {}", subdomain.name, e);
-                }
+                    .map_err(|e| {
+                        tracing::error!("Failed to save subdomain {}: {}", subdomain.name, e);
+                        e
+                    })?;
             }
         }
 
@@ -228,7 +220,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 &vhost_config.base.name,
                 vhost_config.urn.as_ref(),
                 &vhost_urn,
-            );
+            )?;
             let vhost = VirtualHost {
                 name: vhost_config.base.name.clone(),
                 title: vhost_config.base.title,
@@ -245,9 +237,10 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 created_at: vhost_config.base.created_at.unwrap_or(now),
                 updated_at: vhost_config.base.updated_at.unwrap_or(now),
             };
-            if let Err(e) = repo.save_virtual_host(&realm.name, &vhost).await {
+            repo.save_virtual_host(&realm.name, &vhost).await.map_err(|e| {
                 tracing::error!("Failed to save virtual host {}: {}", vhost.name, e);
-            }
+                e
+            })?;
         }
 
         // RoutingChains
@@ -263,7 +256,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 &name,
                 rc_config.urn.as_ref(),
                 &rc_urn,
-            );
+            )?;
             let rc = RoutingChain {
                 name: name.clone(),
                 title: rc_config.base.title,
@@ -274,9 +267,12 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 created_at: rc_config.base.created_at.unwrap_or(now),
                 updated_at: rc_config.base.updated_at.unwrap_or(now),
             };
-            if let Err(e) = repo.save_routing_chain(&realm.name, &rc).await {
-                tracing::error!("Failed to save routing chain {}: {}", rc.name, e);
-            }
+            repo.save_routing_chain(&realm.name, &rc)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to save routing chain {}: {}", rc.name, e);
+                    e
+                })?;
         }
 
         // Hubs
@@ -287,7 +283,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 &hub_config.base.name,
                 hub_config.urn.as_ref(),
                 &hub_urn,
-            );
+            )?;
             let hub = Hub {
                 name: hub_config.base.name.clone(),
                 title: hub_config.base.title,
@@ -303,9 +299,10 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                 created_at: hub_config.base.created_at.unwrap_or(now),
                 updated_at: hub_config.base.updated_at.unwrap_or(now),
             };
-            if let Err(e) = repo.save_hub(&realm.name, &hub).await {
+            repo.save_hub(&realm.name, &hub).await.map_err(|e| {
                 tracing::error!("Failed to save hub {}: {}", hub.name, e);
-            }
+                e
+            })?;
 
             // Services
             for svc_config in hub_config.services {
@@ -319,7 +316,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                     &svc_config.base.name,
                     svc_config.urn.as_ref(),
                     &svc_urn,
-                );
+                )?;
                 let svc = Service {
                     name: svc_config.base.name.clone(),
                     title: svc_config.base.title,
@@ -334,10 +331,14 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) {
                     created_at: svc_config.base.created_at.unwrap_or(now),
                     updated_at: svc_config.base.updated_at.unwrap_or(now),
                 };
-                if let Err(e) = repo.save_service(&realm.name, &hub.name, &svc).await {
-                    tracing::error!("Failed to save service {}: {}", svc.name, e);
-                }
+                repo.save_service(&realm.name, &hub.name, &svc)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to save service {}: {}", svc.name, e);
+                        e
+                    })?;
             }
         }
     }
+    Ok(())
 }
