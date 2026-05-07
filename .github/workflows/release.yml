@@ -37,6 +37,11 @@ jobs:
         run: |
           mkdir -p release-assets
           cp target/x86_64-unknown-linux-musl/release/chip-in-inventory release-assets/chip-in-inventory
+          cat <<EOF > release-assets/Dockerfile
+          FROM scratch
+          COPY chip-in-inventory /chip-in-inventory
+          ENTRYPOINT ["/chip-in-inventory"]
+          EOF
 
       - name: Create or Update Release
         uses: softprops/action-gh-release@v2
@@ -50,8 +55,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lowercase image name
-        run: echo "IMAGE_TAG=$(echo ghcr.io/${{ github.repository }}:latest | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -63,6 +73,6 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: release-assets
           push: true
-          tags: ${{ env.IMAGE_TAG }}
+          tags: ${{ steps.meta.outputs.tags }}
