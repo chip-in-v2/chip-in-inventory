@@ -1,7 +1,7 @@
 # Sets up a development environment for the chip-in-inventory application.
 #
 # Services:
-#   - chip-in-inventory: The main Rust application, built from the local Dockerfile.
+#   - chip-in-inventory: The main Rust application, using the image from GitHub Container Registry.
 #   - etcd: The etcd datastore used as the backend.
 #
 # Usage: docker-compose up
@@ -10,7 +10,7 @@
 services:
   # The Rust API server
   chip-in-inventory:
-    build: .
+    image: ghcr.io/srfeo3/chip-in-inventory:latest
     ports:
       - "3000:3000"
     environment:
