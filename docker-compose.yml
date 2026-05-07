@@ -18,6 +18,8 @@ services:
       - ETCD_ENDPOINTS=http://etcd:2379
       # Set the log level
       - RUST_LOG=info
+    volumes:
+      - ./conf:/conf
     depends_on:
       - etcd
 
