@@ -159,6 +159,16 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let realm_name = realm.name.clone();
             async move {
                 let zone_urn = Zone::generate_urn(&realm_name, &zone_config.base.name);
+                if let Err(e) = validate_urn(
+                    "Zone",
+                    &zone_config.base.name,
+                    zone_config.urn.as_ref(),
+                    &zone_urn,
+                ) {
+                    tracing::error!("Skipping Zone initialization: {}", e);
+                    return;
+                }
+
                 let now = chrono::Utc::now();
                 let zone = Zone {
                     name: zone_config.base.name.clone(),
@@ -181,6 +191,17 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     let realm_name = realm_name.clone();
                     let zone_name = zone.name.clone();
                     async move {
+                        let sub_urn = Subdomain::generate_urn(&realm_name, &zone_name, &sub_config.base.name);
+                        if let Err(e) = validate_urn(
+                            "Subdomain",
+                            &sub_config.base.name,
+                            sub_config.urn.as_ref(),
+                            &sub_urn,
+                        ) {
+                            tracing::error!("Skipping Subdomain initialization: {}", e);
+                            return;
+                        }
+
                         let now = chrono::Utc::now();
                         let subdomain = Subdomain {
                             name: sub_config.base.name.clone(),
@@ -191,7 +212,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             share_cookie: sub_config.base.share_cookie,
                             fqdn: Some(Subdomain::generate_fqdn(&zone_name, &sub_config.base.name)),
                             zone: Some(Zone::generate_urn(&realm_name, &zone_name)),
-                            urn: Some(Subdomain::generate_urn(&realm_name, &zone_name, &sub_config.base.name)),
+                            urn: Some(sub_urn),
                             created_at: sub_config.base.created_at.unwrap_or(now),
                             updated_at: sub_config.base.updated_at.unwrap_or(now),
                         };
@@ -210,13 +231,24 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let repo = repo.clone();
             let realm_name = realm.name.clone();
             async move {
+                let vhost_urn = VirtualHost::generate_urn(&realm_name, &vhost_config.base.name);
+                if let Err(e) = validate_urn(
+                    "VirtualHost",
+                    &vhost_config.base.name,
+                    vhost_config.urn.as_ref(),
+                    &vhost_urn,
+                ) {
+                    tracing::error!("Skipping VirtualHost initialization: {}", e);
+                    return;
+                }
+
                 let now = chrono::Utc::now();
                 let vhost = VirtualHost {
                     name: vhost_config.base.name.clone(),
                     title: vhost_config.base.title,
                     description: vhost_config.base.description,
                     realm: Some(Realm::generate_urn(&realm_name)),
-                    urn: Some(VirtualHost::generate_urn(&realm_name, &vhost_config.base.name)),
+                    urn: Some(vhost_urn),
                     subdomain: vhost_config.base.subdomain,
                     access_log_recorder: vhost_config.base.access_log_recorder,
                     access_log_max_value_length: vhost_config.base.access_log_max_value_length,
@@ -239,13 +271,24 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let repo = repo.clone();
             let realm_name = realm.name.clone();
             async move {
-                let now = chrono::Utc::now();
                 let name = rc_config.base.name.clone().unwrap_or_else(|| "default".to_string());
+                let rc_urn = RoutingChain::generate_urn(&realm_name, &name);
+                if let Err(e) = validate_urn(
+                    "RoutingChain",
+                    &name,
+                    rc_config.urn.as_ref(),
+                    &rc_urn,
+                ) {
+                    tracing::error!("Skipping RoutingChain initialization: {}", e);
+                    return;
+                }
+
+                let now = chrono::Utc::now();
                 let rc = RoutingChain {
                     name: name.clone(),
                     title: rc_config.base.title,
                     description: rc_config.base.description,
-                    urn: Some(RoutingChain::generate_urn(&realm_name, &name)),
+                    urn: Some(rc_urn),
                     realm: Some(Realm::generate_urn(&realm_name)),
                     rules: rc_config.base.rules.unwrap_or_default(),
                     created_at: rc_config.base.created_at.unwrap_or(now),
@@ -263,6 +306,17 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let repo = repo.clone();
             let realm_name = realm.name.clone();
             async move {
+                let hub_urn = Hub::generate_urn(&realm_name, &hub_config.base.name);
+                if let Err(e) = validate_urn(
+                    "Hub",
+                    &hub_config.base.name,
+                    hub_config.urn.as_ref(),
+                    &hub_urn,
+                ) {
+                    tracing::error!("Skipping Hub initialization: {}", e);
+                    return;
+                }
+
                 let now = chrono::Utc::now();
                 let hub = Hub {
                     name: hub_config.base.name.clone(),
@@ -274,7 +328,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     server_cert_key: hub_config.base.server_cert_key,
                     description: hub_config.base.description,
                     realm: Some(Realm::generate_urn(&realm_name)),
-                    urn: Some(Hub::generate_urn(&realm_name, &hub_config.base.name)),
+                    urn: Some(hub_urn),
                     attributes: hub_config.base.attributes,
                     created_at: hub_config.base.created_at.unwrap_or(now),
                     updated_at: hub_config.base.updated_at.unwrap_or(now),
@@ -289,6 +343,17 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     let realm_name = realm_name.clone();
                     let hub_name = hub.name.clone();
                     async move {
+                        let svc_urn = Service::generate_urn(&realm_name, &hub_name, &svc_config.base.name);
+                        if let Err(e) = validate_urn(
+                            "Service",
+                            &svc_config.base.name,
+                            svc_config.urn.as_ref(),
+                            &svc_urn,
+                        ) {
+                            tracing::error!("Skipping Service initialization: {}", e);
+                            return;
+                        }
+
                         let now = chrono::Utc::now();
                         let svc = Service {
                             name: svc_config.base.name.clone(),
@@ -300,7 +365,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             availability_management: svc_config.base.availability_management,
                             singleton: svc_config.base.singleton,
                             hub: Hub::generate_urn(&realm_name, &hub_name),
-                            urn: Service::generate_urn(&realm_name, &hub_name, &svc_config.base.name),
+                            urn: svc_urn,
                             created_at: svc_config.base.created_at.unwrap_or(now),
                             updated_at: svc_config.base.updated_at.unwrap_or(now),
                         };
