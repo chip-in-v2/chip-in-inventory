@@ -5,7 +5,7 @@
 
 use crate::ApiError;
 use crate::models::{Hub, Realm, RoutingChain, Service, Subdomain, VirtualHost, Zone};
-use etcd_client::{Client, GetOptions, SortOrder, SortTarget};
+use etcd_client::{Client, GetOptions, SortOrder, SortTarget, DeleteOptions};
 use serde::{de::DeserializeOwned, Serialize};
 
 const REALM_KEY_PREFIX: &str = "realms/";
@@ -64,6 +64,15 @@ impl EtcdRepository {
         Ok(resources)
     }
 
+    async fn cascade_delete(&self, exact_key: &str, dir_prefix: &str) -> Result<bool, ApiError> {
+        let mut client = self.client.clone();
+        let resp = client.delete(exact_key, None).await?;
+        let deleted = resp.deleted() > 0;
+        let options = DeleteOptions::new().with_prefix();
+        client.delete(dir_prefix, Some(options)).await?;
+        Ok(deleted)
+    }
+
     async fn delete_resource(&self, key: &str) -> Result<bool, ApiError> {
         let mut client = self.client.clone();
         let resp = client.delete(key, None).await?;
@@ -74,6 +83,10 @@ impl EtcdRepository {
 
     fn realm_key(name: &str) -> String {
         format!("{}{}", REALM_KEY_PREFIX, name)
+    }
+
+    fn realm_dir(name: &str) -> String {
+        format!("{}{}/", REALM_KEY_PREFIX, name)
     }
 
     pub async fn save_realm(&self, realm: &Realm) -> Result<(), ApiError> {
@@ -89,13 +102,17 @@ impl EtcdRepository {
     }
 
     pub async fn delete_realm(&self, id: &str) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::realm_key(id)).await
+        self.cascade_delete(&Self::realm_key(id), &Self::realm_dir(id)).await
     }
 
     // --- Zone Methods ---
 
     fn zone_key(realm_id: &str, zone_id: &str) -> String {
         format!("{}{}/zones/{}", REALM_KEY_PREFIX, realm_id, zone_id)
+    }
+
+    fn zone_dir(realm_id: &str, zone_id: &str) -> String {
+        format!("{}{}/zones/{}/", REALM_KEY_PREFIX, realm_id, zone_id)
     }
 
     fn zones_prefix(realm_id: &str) -> String {
@@ -115,7 +132,7 @@ impl EtcdRepository {
     }
 
     pub async fn delete_zone(&self, realm_id: &str, zone_id: &str) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::zone_key(realm_id, zone_id)).await
+        self.cascade_delete(&Self::zone_key(realm_id, zone_id), &Self::zone_dir(realm_id, zone_id)).await
     }
 
     // --- Subdomain Methods ---
@@ -255,6 +272,10 @@ impl EtcdRepository {
         format!("{}{}/hubs/{}", REALM_KEY_PREFIX, realm_id, hub_id)
     }
 
+    fn hub_dir(realm_id: &str, hub_id: &str) -> String {
+        format!("{}{}/hubs/{}/", REALM_KEY_PREFIX, realm_id, hub_id)
+    }
+
     fn hubs_prefix(realm_id: &str) -> String {
         format!("{}{}/hubs/", REALM_KEY_PREFIX, realm_id)
     }
@@ -272,7 +293,7 @@ impl EtcdRepository {
     }
 
     pub async fn delete_hub(&self, realm_id: &str, hub_id: &str) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::hub_key(realm_id, hub_id)).await
+        self.cascade_delete(&Self::hub_key(realm_id, hub_id), &Self::hub_dir(realm_id, hub_id)).await
     }
 
     // --- Service Methods ---
