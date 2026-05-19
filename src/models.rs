@@ -1,8 +1,7 @@
-/// Data models for the inventory repository.
-///
-/// Defines structures and logic for Realms, Zones, Hubs, and other
-/// resources according to the Chip-in inventory specification.
-
+//! Data models for the inventory repository.
+//!
+//! Defines structures and logic for Realms, Zones, Hubs, and other
+//! resources according to the Chip-in inventory specification.
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

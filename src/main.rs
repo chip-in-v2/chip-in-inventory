@@ -1,10 +1,9 @@
-/// Repository server for the SPN infrastructure system.
-///
-/// Provides a RESTful API and Web UI to manage inventory information,
-/// using etcd as the backend data store.
-/// The data models for the repository are defined at:
-///   https://github.com/chip-in-v2/docusaurus/tree/main/root/openapi/inventory
-
+//! Repository server for the SPN infrastructure system.
+//!
+//! Provides a RESTful API and Web UI to manage inventory information,
+//! using etcd as the backend data store.
+//! The data models for the repository are defined at:
+//!   https://github.com/chip-in-v2/docusaurus/tree/main/root/openapi/inventory
 mod models;
 mod repository;
 mod config;
@@ -681,11 +680,10 @@ async fn resolve_vhost_fqdn(
     subdomain_urn: &str,
     _vhost_name: &str,
 ) -> Result<Option<String>, ApiError> {
-    if let Some((realm_name, zone_name, subdomain_name)) = Subdomain::parse_urn(subdomain_urn) {
-        if let Ok(subdomain) = repo.get_subdomain(&realm_name, &zone_name, &subdomain_name).await {
+    if let Some((realm_name, zone_name, subdomain_name)) = Subdomain::parse_urn(subdomain_urn)
+        && let Ok(subdomain) = repo.get_subdomain(&realm_name, &zone_name, &subdomain_name).await {
             return Ok(subdomain.fqdn);
         }
-    }
     Ok(None)
 }
 

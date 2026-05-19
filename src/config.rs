@@ -1,8 +1,7 @@
-/// Configuration loader and initial data population logic.
-///
-/// Handles reading the YAML configuration file and synchronizing the
-/// initial state with the etcd backend during application startup.
-
+//! Configuration loader and initial data population logic.
+//!
+//! Handles reading the YAML configuration file and synchronizing the
+//! initial state with the etcd backend during application startup.
 use crate::models::{
     Hub, NewHub, NewRealm, NewRoutingChain, NewService, NewSubdomain, NewVirtualHost, NewZone,
     Realm, RoutingChain, Service, Subdomain, VirtualHost, Zone,

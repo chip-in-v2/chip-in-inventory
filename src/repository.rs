@@ -1,8 +1,7 @@
-/// Data access layer for etcd storage.
-///
-/// Implements the EtcdRepository to handle CRUD operations and
-/// resource mapping for the inventory system.
-
+//! Data access layer for etcd storage.
+//!
+//! Implements the EtcdRepository to handle CRUD operations and
+//! resource mapping for the inventory system.
 use crate::ApiError;
 use crate::models::{Hub, Realm, RoutingChain, Service, Subdomain, VirtualHost, Zone};
 use etcd_client::{Client, GetOptions, SortOrder, SortTarget, DeleteOptions};
