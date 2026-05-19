@@ -229,11 +229,15 @@ impl EtcdRepository {
 
     // --- RoutingChain Methods ---
 
-    fn routing_chain_key(realm_id: &str) -> String {
+    fn routing_chain_key(realm_id: &str, routing_chain_id: &str) -> String {
         format!(
-            "{}{}/routing-chain",
-            REALM_KEY_PREFIX, realm_id
+            "{}{}/routing-chains/{}",
+            REALM_KEY_PREFIX, realm_id, routing_chain_id
         )
+    }
+
+    fn routing_chains_prefix(realm_id: &str) -> String {
+        format!("{}{}/routing-chains/", REALM_KEY_PREFIX, realm_id)
     }
 
     pub async fn save_routing_chain(
@@ -241,29 +245,27 @@ impl EtcdRepository {
         realm_id: &str,
         routing_chain: &RoutingChain,
     ) -> Result<(), ApiError> {
-        self.save_resource(&Self::routing_chain_key(realm_id), routing_chain).await
+        self.save_resource(&Self::routing_chain_key(realm_id, &routing_chain.name), routing_chain).await
     }
 
     pub async fn get_routing_chain(
         &self,
         realm_id: &str,
+        routing_chain_id: &str,
     ) -> Result<RoutingChain, ApiError> {
-        self.get_resource(&Self::routing_chain_key(realm_id)).await
+        self.get_resource(&Self::routing_chain_key(realm_id, routing_chain_id)).await
     }
 
     pub async fn list_routing_chains(&self, realm_id: &str) -> Result<Vec<RoutingChain>, ApiError> {
-        match self.get_routing_chain(realm_id).await {
-            Ok(rc) => Ok(vec![rc]),
-            Err(ApiError::NotFound) => Ok(vec![]),
-            Err(e) => Err(e),
-        }
+        self.list_resources(&Self::routing_chains_prefix(realm_id)).await
     }
 
     pub async fn delete_routing_chain(
         &self,
         realm_id: &str,
+        routing_chain_id: &str,
     ) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::routing_chain_key(realm_id)).await
+        self.delete_resource(&Self::routing_chain_key(realm_id, routing_chain_id)).await
     }
 
     // --- Hub Methods ---

@@ -196,12 +196,19 @@ impl Subdomain {
 
     /// Parses a subdomain URN into (realm, zone, name)
     pub fn parse_urn(urn: &str) -> Option<(String, String, String)> {
-        let parts: Vec<&str> = urn.split(':').collect();
-        if parts.len() == 6 && parts[0] == "urn" && parts[1] == "chip-in" && parts[2] == "subdomain" {
-            Some((parts[3].to_string(), parts[4].to_string(), parts[5].to_string()))
-        } else {
-            None
+        let mut parts = urn.split(':');
+        if parts.next() == Some("urn")
+            && parts.next() == Some("chip-in")
+            && parts.next() == Some("subdomain")
+        {
+            let realm = parts.next()?;
+            let zone = parts.next()?;
+            let name = parts.next()?;
+            if parts.next().is_none() {
+                return Some((realm.to_string(), zone.to_string(), name.to_string()));
+            }
         }
+        None
     }
 }
 

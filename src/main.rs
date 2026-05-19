@@ -28,9 +28,12 @@ use thiserror::Error;
 use tracing::info;
 type AppState = EtcdRepository;
 
-/// Validates ID to prevent path traversal.
+/// Validates ID using an allowlist approach to prevent path traversal and injection.
 fn validate_id(id: &str) -> Result<(), ApiError> {
-    if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains(':') {
+    // Allows alphanumeric characters, hyphen, underscore, dot (for FQDNs), and @ (for APEX subdomains).
+    let is_valid = id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '@');
+
+    if id.is_empty() || !is_valid {
         return Err(ApiError::BadRequest(format!("Invalid ID format: {}", id)));
     }
     Ok(())
@@ -273,12 +276,14 @@ async fn get_realm(
 }
 
 // PUT /realms/:realm_id
+// PUT /realms/:realm_id
 async fn update_realm(
     State(repo): State<AppState>,
     Path(realm_id): Path<String>,
     Json(payload): Json<UpdateRealm>,
 ) -> Result<Json<Realm>, ApiError> {
     validate_id(&realm_id)?;
+    let existing = repo.get_realm(&realm_id).await.ok();
     let now = chrono::Utc::now();
     let realm = Realm {
         name: realm_id.clone(),
@@ -292,7 +297,7 @@ async fn update_realm(
         administrators: payload.administrators,
         expired_at: payload.expired_at,
         disabled: payload.disabled,
-        created_at: payload.created_at.unwrap_or(now),
+        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
         updated_at: payload.updated_at.unwrap_or(now),
     };
 
@@ -378,6 +383,7 @@ async fn get_service(
 }
 
 // PUT /realms/:realm_id/hubs/:hub_id/services/:service_id
+// PUT /realms/:realm_id/hubs/:hub_id/services/:service_id
 async fn update_service(
     State(repo): State<AppState>,
     Path((realm_id, hub_id, service_id)): Path<(String, String, String)>,
@@ -386,6 +392,7 @@ async fn update_service(
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     validate_id(&service_id)?;
+    let existing = repo.get_service(&realm_id, &hub_id, &service_id).await.ok();
     let now = chrono::Utc::now();
     let mut service = Service {
         name: service_id.clone(),
@@ -398,7 +405,7 @@ async fn update_service(
         singleton: payload.singleton,
         hub: String::new(),
         urn: String::new(),
-        created_at: payload.created_at.unwrap_or(now),
+        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
         updated_at: payload.updated_at.unwrap_or(now),
     };
 
@@ -487,6 +494,7 @@ async fn get_hub(
 }
 
 // PUT /realms/:realm_id/hubs/:hub_id
+// PUT /realms/:realm_id/hubs/:hub_id
 async fn update_hub(
     State(repo): State<AppState>,
     Path((realm_id, hub_id)): Path<(String, String)>,
@@ -494,6 +502,7 @@ async fn update_hub(
 ) -> Result<Json<Hub>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
+    let existing = repo.get_hub(&realm_id, &hub_id).await.ok();
     let now = chrono::Utc::now();
     let mut hub = Hub {
         name: hub_id.clone(),
@@ -507,7 +516,7 @@ async fn update_hub(
         realm: None,
         urn: None,
         attributes: payload.attributes,
-        created_at: payload.created_at.unwrap_or(now),
+        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
         updated_at: payload.updated_at.unwrap_or(now),
     };
 
@@ -588,13 +597,14 @@ async fn create_routing_chain(
 }
 
 // GET /realms/:realm_id/routing-chains/:routing_chain_id
+// GET /realms/:realm_id/routing-chains/:routing_chain_id
 async fn get_routing_chain(
     State(repo): State<AppState>,
     Path((realm_id, routing_chain_id)): Path<(String, String)>,
 ) -> Result<Json<RoutingChain>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
-    let mut rchain = repo.get_routing_chain(&realm_id).await?;
+    let mut rchain = repo.get_routing_chain(&realm_id, &routing_chain_id).await?;
 
     if rchain.name != routing_chain_id {
         return Err(ApiError::NotFound);
@@ -612,6 +622,7 @@ async fn update_routing_chain(
 ) -> Result<Json<RoutingChain>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
+    let existing = repo.get_routing_chain(&realm_id, &routing_chain_id).await.ok();
     let now = chrono::Utc::now();
     let mut rchain = RoutingChain {
         name: routing_chain_id.clone(),
@@ -620,7 +631,7 @@ async fn update_routing_chain(
         urn: None,
         realm: None,
         rules: payload.rules.unwrap_or_default(),
-        created_at: payload.created_at.unwrap_or(now),
+        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
         updated_at: payload.updated_at.unwrap_or(now),
     };
 
@@ -637,7 +648,7 @@ async fn delete_routing_chain(
 ) -> Result<StatusCode, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
-    let deleted = repo.delete_routing_chain(&realm_id).await?;
+    let deleted = repo.delete_routing_chain(&realm_id, &routing_chain_id).await?;
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -764,6 +775,7 @@ async fn get_virtual_host(
 }
 
 // PUT /realms/:realm_id/virtual-hosts/:virtual_host_id
+// PUT /realms/:realm_id/virtual-hosts/:virtual_host_id
 async fn update_virtual_host(
     State(repo): State<AppState>,
     Path((realm_id, virtual_host_id)): Path<(String, String)>,
@@ -771,6 +783,7 @@ async fn update_virtual_host(
 ) -> Result<Json<VirtualHostResponse>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&virtual_host_id)?;
+    let existing = repo.get_virtual_host(&realm_id, &virtual_host_id).await.ok();
     let now = chrono::Utc::now();
     let vhost = VirtualHost {
         name: virtual_host_id.clone(),
@@ -785,7 +798,7 @@ async fn update_virtual_host(
         certificate: payload.certificate,
         key: payload.key,
         disabled: payload.disabled,
-        created_at: payload.created_at.unwrap_or(now),
+        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
         updated_at: payload.updated_at.unwrap_or(now),
     };
 
@@ -877,6 +890,7 @@ async fn get_subdomain(
 }
 
 // PUT /realms/:realm_id/zones/:zone_id/subdomains/:subdomain_id
+// PUT /realms/:realm_id/zones/:zone_id/subdomains/:subdomain_id
 async fn update_subdomain(
     State(repo): State<AppState>,
     Path((realm_id, zone_id, subdomain_id)): Path<(String, String, String)>,
@@ -885,6 +899,7 @@ async fn update_subdomain(
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     validate_id(&subdomain_id)?;
+    let existing = repo.get_subdomain(&realm_id, &zone_id, &subdomain_id).await.ok();
     let now = chrono::Utc::now();
     let mut subdomain = Subdomain {
         name: subdomain_id.clone(),
@@ -896,7 +911,7 @@ async fn update_subdomain(
         fqdn: None,
         zone: None,
         urn: None,
-        created_at: payload.created_at.unwrap_or(now),
+        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
         updated_at: payload.updated_at.unwrap_or(now),
     };
 
@@ -988,6 +1003,7 @@ async fn update_zone(
 ) -> Result<Json<Zone>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
+    let existing = repo.get_zone(&realm_id, &zone_id).await.ok();
     let now = chrono::Utc::now();
     let mut zone = Zone {
         name: zone_id.clone(),
@@ -997,7 +1013,7 @@ async fn update_zone(
         acme_certificate_provider: payload.acme_certificate_provider,
         urn: None,
         realm: Some(Realm::generate_urn(&realm_id)),
-        created_at: payload.created_at.unwrap_or(now),
+        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
         updated_at: payload.updated_at.unwrap_or(now),
     };
 
