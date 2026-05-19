@@ -176,6 +176,37 @@ impl EtcdRepository {
         self.list_resources(&Self::subdomains_prefix(realm_id, zone_id)).await
     }
 
+    pub async fn list_all_subdomains_in_realm(&self, realm_id: &str) -> Result<Vec<Subdomain>, ApiError> {
+        let mut client = self.client.clone();
+        let prefix = format!("{}{}/zones/", REALM_KEY_PREFIX, realm_id);
+        let options = GetOptions::new()
+            .with_prefix()
+            .with_sort(SortTarget::Key, SortOrder::Ascend);
+        let resp = client.get(prefix, Some(options)).await?;
+        let mut subdomains = Vec::new();
+        for kv in resp.kvs() {
+            if let Ok(key_str) = kv.key_str() {
+                if let Some(pos) = key_str.find("/subdomains/") {
+                    let sub_part = &key_str[pos + "/subdomains/".len()..];
+                    if !sub_part.contains('/') {
+                        if let Ok(mut subdomain) = serde_json::from_slice::<Subdomain>(kv.value()) {
+                            let parts: Vec<&str> = key_str.split('/').collect();
+                            if parts.len() >= 6 {
+                                let zone_id = parts[3];
+                                subdomain.urn = Some(Subdomain::generate_urn(realm_id, zone_id, &subdomain.name));
+                                subdomain.realm = Some(Realm::generate_urn(realm_id));
+                                subdomain.zone = Some(Zone::generate_urn(realm_id, zone_id));
+                                subdomain.fqdn = Some(Subdomain::generate_fqdn(zone_id, &subdomain.name));
+                            }
+                            subdomains.push(subdomain);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(subdomains)
+    }
+
     pub async fn delete_subdomain(
         &self,
         realm_id: &str,

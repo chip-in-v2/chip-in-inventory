@@ -665,9 +665,19 @@ async fn list_virtual_hosts(
     validate_id(&realm_id)?;
     let vhosts = repo.list_virtual_hosts(&realm_id).await?;
 
+    let subdomains = repo.list_all_subdomains_in_realm(&realm_id).await?;
+    let subdomain_map: std::collections::HashMap<String, String> = subdomains
+        .into_iter()
+        .filter_map(|s| {
+            let urn = s.urn.clone()?;
+            let fqdn = s.fqdn.clone()?;
+            Some((urn, fqdn))
+        })
+        .collect();
+
     let mut response_vhosts = Vec::new();
     for vhost in vhosts {
-        let fqdn = resolve_vhost_fqdn(&repo, &vhost.subdomain, &vhost.name).await?;
+        let fqdn = subdomain_map.get(&vhost.subdomain).cloned();
         response_vhosts.push(vhost.into_response(fqdn));
     }
 
