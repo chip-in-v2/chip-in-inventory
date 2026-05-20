@@ -2,23 +2,28 @@
 //!
 //! Handles reading the YAML configuration file and synchronizing the
 //! initial state with the etcd backend during application startup.
+use crate::ApiError;
 use crate::models::{
     Hub, NewHub, NewRealm, NewRoutingChain, NewService, NewSubdomain, NewVirtualHost, NewZone,
     Realm, RoutingChain, Service, Subdomain, VirtualHost, Zone,
 };
 use crate::repository::EtcdRepository;
+use futures::future::try_join_all;
 use serde::Deserialize;
 use std::path::Path;
 use tracing::info;
-use crate::ApiError;
-use futures::future::try_join_all;
 
 #[derive(Deserialize)]
 struct Config {
     realms: Vec<RealmConfig>,
 }
 
-fn validate_urn(resource_type: &str, name: &str, yaml_urn: Option<&String>, generated_urn: &str) -> Result<(), ApiError> {
+fn validate_urn(
+    resource_type: &str,
+    name: &str,
+    yaml_urn: Option<&String>,
+    generated_urn: &str,
+) -> Result<(), ApiError> {
     if let Some(urn) = yaml_urn {
         if urn != generated_urn {
             let msg = format!(
@@ -158,14 +163,12 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let realm_name = realm.name.clone();
             async move {
                 let zone_urn = Zone::generate_urn(&realm_name, &zone_config.base.name);
-                if let Err(e) = validate_urn(
+                validate_urn(
                     "Zone",
                     &zone_config.base.name,
                     zone_config.urn.as_ref(),
                     &zone_urn,
-                ) {
-                    return Err(e);
-                }
+                )?;
 
                 let now = chrono::Utc::now();
                 let zone = Zone {
@@ -187,15 +190,14 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     let realm_name = realm_name.clone();
                     let zone_name = zone.name.clone();
                     async move {
-                        let sub_urn = Subdomain::generate_urn(&realm_name, &zone_name, &sub_config.base.name);
-                        if let Err(e) = validate_urn(
+                        let sub_urn =
+                            Subdomain::generate_urn(&realm_name, &zone_name, &sub_config.base.name);
+                        validate_urn(
                             "Subdomain",
                             &sub_config.base.name,
                             sub_config.urn.as_ref(),
                             &sub_urn,
-                        ) {
-                            return Err(e);
-                        }
+                        )?;
 
                         let now = chrono::Utc::now();
                         let subdomain = Subdomain {
@@ -211,12 +213,13 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             created_at: sub_config.base.created_at.unwrap_or(now),
                             updated_at: sub_config.base.updated_at.unwrap_or(now),
                         };
-                        repo.save_subdomain(&realm_name, &zone_name, &subdomain).await?;
-                        Ok(())
+                        repo.save_subdomain(&realm_name, &zone_name, &subdomain)
+                            .await?;
+                        Ok::<(), ApiError>(())
                     }
                 });
                 try_join_all(sub_futures).await?;
-                Ok(())
+                Ok::<(), ApiError>(())
             }
         });
         try_join_all(zone_futures).await?;
@@ -227,14 +230,12 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let realm_name = realm.name.clone();
             async move {
                 let vhost_urn = VirtualHost::generate_urn(&realm_name, &vhost_config.base.name);
-                if let Err(e) = validate_urn(
+                validate_urn(
                     "VirtualHost",
                     &vhost_config.base.name,
                     vhost_config.urn.as_ref(),
                     &vhost_urn,
-                ) {
-                    return Err(e);
-                }
+                )?;
 
                 let now = chrono::Utc::now();
                 let vhost = VirtualHost {
@@ -254,7 +255,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     updated_at: vhost_config.base.updated_at.unwrap_or(now),
                 };
                 repo.save_virtual_host(&realm_name, &vhost).await?;
-                Ok(())
+                Ok::<(), ApiError>(())
             }
         });
         try_join_all(vhost_futures).await?;
@@ -264,16 +265,13 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let repo = repo.clone();
             let realm_name = realm.name.clone();
             async move {
-                let name = rc_config.base.name.clone().unwrap_or_else(|| "default".to_string());
+                let name = rc_config
+                    .base
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| "default".to_string());
                 let rc_urn = RoutingChain::generate_urn(&realm_name, &name);
-                if let Err(e) = validate_urn(
-                    "RoutingChain",
-                    &name,
-                    rc_config.urn.as_ref(),
-                    &rc_urn,
-                ) {
-                    return Err(e);
-                }
+                validate_urn("RoutingChain", &name, rc_config.urn.as_ref(), &rc_urn)?;
 
                 let now = chrono::Utc::now();
                 let rc = RoutingChain {
@@ -287,7 +285,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     updated_at: rc_config.base.updated_at.unwrap_or(now),
                 };
                 repo.save_routing_chain(&realm_name, &rc).await?;
-                Ok(())
+                Ok::<(), ApiError>(())
             }
         });
         try_join_all(rc_futures).await?;
@@ -298,14 +296,12 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
             let realm_name = realm.name.clone();
             async move {
                 let hub_urn = Hub::generate_urn(&realm_name, &hub_config.base.name);
-                if let Err(e) = validate_urn(
+                validate_urn(
                     "Hub",
                     &hub_config.base.name,
                     hub_config.urn.as_ref(),
                     &hub_urn,
-                ) {
-                    return Err(e);
-                }
+                )?;
 
                 let now = chrono::Utc::now();
                 let hub = Hub {
@@ -331,15 +327,14 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     let realm_name = realm_name.clone();
                     let hub_name = hub.name.clone();
                     async move {
-                        let svc_urn = Service::generate_urn(&realm_name, &hub_name, &svc_config.base.name);
-                        if let Err(e) = validate_urn(
+                        let svc_urn =
+                            Service::generate_urn(&realm_name, &hub_name, &svc_config.base.name);
+                        validate_urn(
                             "Service",
                             &svc_config.base.name,
                             svc_config.urn.as_ref(),
                             &svc_urn,
-                        ) {
-                            return Err(e);
-                        }
+                        )?;
 
                         let now = chrono::Utc::now();
                         let svc = Service {
@@ -357,11 +352,11 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             updated_at: svc_config.base.updated_at.unwrap_or(now),
                         };
                         repo.save_service(&realm_name, &hub_name, &svc).await?;
-                        Ok(())
+                        Ok::<(), ApiError>(())
                     }
                 });
                 try_join_all(svc_futures).await?;
-                Ok(())
+                Ok::<(), ApiError>(())
             }
         });
         try_join_all(hub_futures).await?;

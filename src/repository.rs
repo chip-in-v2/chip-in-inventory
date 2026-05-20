@@ -4,8 +4,11 @@
 //! resource mapping for the inventory system.
 use crate::ApiError;
 use crate::models::{Hub, Realm, RoutingChain, Service, Subdomain, VirtualHost, Zone};
-use etcd_client::{Client, GetOptions, SortOrder, SortTarget, DeleteOptions, Compare, CompareOp, Txn, TxnOp, TxnOpResponse};
-use serde::{de::DeserializeOwned, Serialize};
+use etcd_client::{
+    Client, Compare, CompareOp, DeleteOptions, GetOptions, SortOrder, SortTarget, Txn, TxnOp,
+    TxnOpResponse,
+};
+use serde::{Serialize, de::DeserializeOwned};
 
 const REALM_KEY_PREFIX: &str = "realms/";
 
@@ -82,7 +85,10 @@ impl EtcdRepository {
         Ok(resp.deleted() > 0)
     }
 
-    async fn get_resource_with_revision<T: DeserializeOwned>(&self, key: &str) -> Result<(T, i64), ApiError> {
+    async fn get_resource_with_revision<T: DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<(T, i64), ApiError> {
         let mut client = self.client.clone();
         let resp = client.get(key, None).await?;
         if let Some(kv) = resp.kvs().first() {
@@ -93,7 +99,12 @@ impl EtcdRepository {
         }
     }
 
-    async fn save_resource_conditional<T: Serialize>(&self, key: &str, resource: &T, expected_revision: i64) -> Result<bool, ApiError> {
+    async fn save_resource_conditional<T: Serialize>(
+        &self,
+        key: &str,
+        resource: &T,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
         let mut client = self.client.clone();
         let value = serde_json::to_string(resource)?;
         let compare = if expected_revision == 0 {
@@ -119,11 +130,17 @@ impl EtcdRepository {
     }
 
     pub async fn save_realm(&self, realm: &Realm) -> Result<(), ApiError> {
-        self.save_resource(&Self::realm_key(&realm.name), realm).await
+        self.save_resource(&Self::realm_key(&realm.name), realm)
+            .await
     }
 
-    pub async fn save_realm_conditional(&self, realm: &Realm, expected_revision: i64) -> Result<bool, ApiError> {
-        self.save_resource_conditional(&Self::realm_key(&realm.name), realm, expected_revision).await
+    pub async fn save_realm_conditional(
+        &self,
+        realm: &Realm,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::realm_key(&realm.name), realm, expected_revision)
+            .await
     }
 
     pub async fn get_realm(&self, id: &str) -> Result<Realm, ApiError> {
@@ -139,7 +156,8 @@ impl EtcdRepository {
     }
 
     pub async fn delete_realm(&self, id: &str) -> Result<bool, ApiError> {
-        self.cascade_delete(&Self::realm_key(id), &Self::realm_dir(id)).await
+        self.cascade_delete(&Self::realm_key(id), &Self::realm_dir(id))
+            .await
     }
 
     // --- Zone Methods ---
@@ -157,19 +175,35 @@ impl EtcdRepository {
     }
 
     pub async fn save_zone(&self, realm_id: &str, zone: &Zone) -> Result<(), ApiError> {
-        self.save_resource(&Self::zone_key(realm_id, &zone.name), zone).await
+        self.save_resource(&Self::zone_key(realm_id, &zone.name), zone)
+            .await
     }
 
-    pub async fn save_zone_conditional(&self, realm_id: &str, zone: &Zone, expected_revision: i64) -> Result<bool, ApiError> {
-        self.save_resource_conditional(&Self::zone_key(realm_id, &zone.name), zone, expected_revision).await
+    pub async fn save_zone_conditional(
+        &self,
+        realm_id: &str,
+        zone: &Zone,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
+        self.save_resource_conditional(
+            &Self::zone_key(realm_id, &zone.name),
+            zone,
+            expected_revision,
+        )
+        .await
     }
 
     pub async fn get_zone(&self, realm_id: &str, zone_id: &str) -> Result<Zone, ApiError> {
         self.get_resource(&Self::zone_key(realm_id, zone_id)).await
     }
 
-    pub async fn get_zone_with_revision(&self, realm_id: &str, zone_id: &str) -> Result<(Zone, i64), ApiError> {
-        self.get_resource_with_revision(&Self::zone_key(realm_id, zone_id)).await
+    pub async fn get_zone_with_revision(
+        &self,
+        realm_id: &str,
+        zone_id: &str,
+    ) -> Result<(Zone, i64), ApiError> {
+        self.get_resource_with_revision(&Self::zone_key(realm_id, zone_id))
+            .await
     }
 
     pub async fn list_zones(&self, realm_id: &str) -> Result<Vec<Zone>, ApiError> {
@@ -177,7 +211,11 @@ impl EtcdRepository {
     }
 
     pub async fn delete_zone(&self, realm_id: &str, zone_id: &str) -> Result<bool, ApiError> {
-        self.cascade_delete(&Self::zone_key(realm_id, zone_id), &Self::zone_dir(realm_id, zone_id)).await
+        self.cascade_delete(
+            &Self::zone_key(realm_id, zone_id),
+            &Self::zone_dir(realm_id, zone_id),
+        )
+        .await
     }
 
     // --- Subdomain Methods ---
@@ -202,7 +240,11 @@ impl EtcdRepository {
         zone_id: &str,
         subdomain: &Subdomain,
     ) -> Result<(), ApiError> {
-        self.save_resource(&Self::subdomain_key(realm_id, zone_id, &subdomain.name), subdomain).await
+        self.save_resource(
+            &Self::subdomain_key(realm_id, zone_id, &subdomain.name),
+            subdomain,
+        )
+        .await
     }
 
     pub async fn save_subdomain_conditional(
@@ -212,7 +254,12 @@ impl EtcdRepository {
         subdomain: &Subdomain,
         expected_revision: i64,
     ) -> Result<bool, ApiError> {
-        self.save_resource_conditional(&Self::subdomain_key(realm_id, zone_id, &subdomain.name), subdomain, expected_revision).await
+        self.save_resource_conditional(
+            &Self::subdomain_key(realm_id, zone_id, &subdomain.name),
+            subdomain,
+            expected_revision,
+        )
+        .await
     }
 
     pub async fn get_subdomain(
@@ -221,7 +268,8 @@ impl EtcdRepository {
         zone_id: &str,
         subdomain_id: &str,
     ) -> Result<Subdomain, ApiError> {
-        self.get_resource(&Self::subdomain_key(realm_id, zone_id, subdomain_id)).await
+        self.get_resource(&Self::subdomain_key(realm_id, zone_id, subdomain_id))
+            .await
     }
 
     pub async fn get_subdomain_with_revision(
@@ -230,7 +278,8 @@ impl EtcdRepository {
         zone_id: &str,
         subdomain_id: &str,
     ) -> Result<(Subdomain, i64), ApiError> {
-        self.get_resource_with_revision(&Self::subdomain_key(realm_id, zone_id, subdomain_id)).await
+        self.get_resource_with_revision(&Self::subdomain_key(realm_id, zone_id, subdomain_id))
+            .await
     }
 
     pub async fn list_subdomains(
@@ -238,10 +287,14 @@ impl EtcdRepository {
         realm_id: &str,
         zone_id: &str,
     ) -> Result<Vec<Subdomain>, ApiError> {
-        self.list_resources(&Self::subdomains_prefix(realm_id, zone_id)).await
+        self.list_resources(&Self::subdomains_prefix(realm_id, zone_id))
+            .await
     }
 
-    pub async fn list_all_subdomains_in_realm(&self, realm_id: &str) -> Result<Vec<Subdomain>, ApiError> {
+    pub async fn list_all_subdomains_in_realm(
+        &self,
+        realm_id: &str,
+    ) -> Result<Vec<Subdomain>, ApiError> {
         let mut client = self.client.clone();
         let prefix = format!("{}{}/zones/", REALM_KEY_PREFIX, realm_id);
         let options = GetOptions::new()
@@ -250,24 +303,23 @@ impl EtcdRepository {
         let resp = client.get(prefix, Some(options)).await?;
         let mut subdomains = Vec::new();
         for kv in resp.kvs() {
-            if let Ok(key_str) = kv.key_str() {
-                if let Some(pos) = key_str.find("/subdomains/") {
-                    let sub_part = &key_str[pos + "/subdomains/".len()..];
-                    if !sub_part.contains('/') {
-                        if let Ok(mut subdomain) = serde_json::from_slice::<Subdomain>(kv.value()) {
-                            let parts: Vec<&str> = key_str.split('/').collect();
-                            if parts.len() >= 6 {
-                                let zone_id = parts[3];
-                                subdomain.urn =
-                                    Some(Subdomain::generate_urn(realm_id, zone_id, &subdomain.name));
-                                subdomain.realm = Some(Realm::generate_urn(realm_id));
-                                subdomain.zone = Some(Zone::generate_urn(realm_id, zone_id));
-                                subdomain.fqdn =
-                                    Some(Subdomain::generate_fqdn(zone_id, &subdomain.name));
-                            }
-                            subdomains.push(subdomain);
-                        }
+            if let Ok(key_str) = kv.key_str()
+                && let Some(pos) = key_str.find("/subdomains/")
+            {
+                let sub_part = &key_str[pos + "/subdomains/".len()..];
+                if !sub_part.contains('/')
+                    && let Ok(mut subdomain) = serde_json::from_slice::<Subdomain>(kv.value())
+                {
+                    let parts: Vec<&str> = key_str.split('/').collect();
+                    if parts.len() >= 6 {
+                        let zone_id = parts[3];
+                        subdomain.urn =
+                            Some(Subdomain::generate_urn(realm_id, zone_id, &subdomain.name));
+                        subdomain.realm = Some(Realm::generate_urn(realm_id));
+                        subdomain.zone = Some(Zone::generate_urn(realm_id, zone_id));
+                        subdomain.fqdn = Some(Subdomain::generate_fqdn(zone_id, &subdomain.name));
                     }
+                    subdomains.push(subdomain);
                 }
             }
         }
@@ -280,7 +332,8 @@ impl EtcdRepository {
         zone_id: &str,
         subdomain_id: &str,
     ) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::subdomain_key(realm_id, zone_id, subdomain_id)).await
+        self.delete_resource(&Self::subdomain_key(realm_id, zone_id, subdomain_id))
+            .await
     }
 
     // --- VirtualHost Methods ---
@@ -301,11 +354,25 @@ impl EtcdRepository {
         realm_id: &str,
         virtual_host: &VirtualHost,
     ) -> Result<(), ApiError> {
-        self.save_resource(&Self::virtual_host_key(realm_id, &virtual_host.name), virtual_host).await
+        self.save_resource(
+            &Self::virtual_host_key(realm_id, &virtual_host.name),
+            virtual_host,
+        )
+        .await
     }
 
-    pub async fn save_virtual_host_conditional(&self, realm_id: &str, virtual_host: &VirtualHost, expected_revision: i64) -> Result<bool, ApiError> {
-        self.save_resource_conditional(&Self::virtual_host_key(realm_id, &virtual_host.name), virtual_host, expected_revision).await
+    pub async fn save_virtual_host_conditional(
+        &self,
+        realm_id: &str,
+        virtual_host: &VirtualHost,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
+        self.save_resource_conditional(
+            &Self::virtual_host_key(realm_id, &virtual_host.name),
+            virtual_host,
+            expected_revision,
+        )
+        .await
     }
 
     pub async fn get_virtual_host(
@@ -313,7 +380,8 @@ impl EtcdRepository {
         realm_id: &str,
         virtual_host_id: &str,
     ) -> Result<VirtualHost, ApiError> {
-        self.get_resource(&Self::virtual_host_key(realm_id, virtual_host_id)).await
+        self.get_resource(&Self::virtual_host_key(realm_id, virtual_host_id))
+            .await
     }
 
     pub async fn get_virtual_host_with_revision(
@@ -321,11 +389,13 @@ impl EtcdRepository {
         realm_id: &str,
         virtual_host_id: &str,
     ) -> Result<(VirtualHost, i64), ApiError> {
-        self.get_resource_with_revision(&Self::virtual_host_key(realm_id, virtual_host_id)).await
+        self.get_resource_with_revision(&Self::virtual_host_key(realm_id, virtual_host_id))
+            .await
     }
 
     pub async fn list_virtual_hosts(&self, realm_id: &str) -> Result<Vec<VirtualHost>, ApiError> {
-        self.list_resources(&Self::virtual_hosts_prefix(realm_id)).await
+        self.list_resources(&Self::virtual_hosts_prefix(realm_id))
+            .await
     }
 
     pub async fn delete_virtual_host(
@@ -333,7 +403,8 @@ impl EtcdRepository {
         realm_id: &str,
         virtual_host_id: &str,
     ) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::virtual_host_key(realm_id, virtual_host_id)).await
+        self.delete_resource(&Self::virtual_host_key(realm_id, virtual_host_id))
+            .await
     }
 
     // --- RoutingChain Methods ---
@@ -354,11 +425,25 @@ impl EtcdRepository {
         realm_id: &str,
         routing_chain: &RoutingChain,
     ) -> Result<(), ApiError> {
-        self.save_resource(&Self::routing_chain_key(realm_id, &routing_chain.name), routing_chain).await
+        self.save_resource(
+            &Self::routing_chain_key(realm_id, &routing_chain.name),
+            routing_chain,
+        )
+        .await
     }
 
-    pub async fn save_routing_chain_conditional(&self, realm_id: &str, routing_chain: &RoutingChain, expected_revision: i64) -> Result<bool, ApiError> {
-        self.save_resource_conditional(&Self::routing_chain_key(realm_id, &routing_chain.name), routing_chain, expected_revision).await
+    pub async fn save_routing_chain_conditional(
+        &self,
+        realm_id: &str,
+        routing_chain: &RoutingChain,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
+        self.save_resource_conditional(
+            &Self::routing_chain_key(realm_id, &routing_chain.name),
+            routing_chain,
+            expected_revision,
+        )
+        .await
     }
 
     pub async fn get_routing_chain(
@@ -366,7 +451,8 @@ impl EtcdRepository {
         realm_id: &str,
         routing_chain_id: &str,
     ) -> Result<RoutingChain, ApiError> {
-        self.get_resource(&Self::routing_chain_key(realm_id, routing_chain_id)).await
+        self.get_resource(&Self::routing_chain_key(realm_id, routing_chain_id))
+            .await
     }
 
     pub async fn get_routing_chain_with_revision(
@@ -374,11 +460,13 @@ impl EtcdRepository {
         realm_id: &str,
         routing_chain_id: &str,
     ) -> Result<(RoutingChain, i64), ApiError> {
-        self.get_resource_with_revision(&Self::routing_chain_key(realm_id, routing_chain_id)).await
+        self.get_resource_with_revision(&Self::routing_chain_key(realm_id, routing_chain_id))
+            .await
     }
 
     pub async fn list_routing_chains(&self, realm_id: &str) -> Result<Vec<RoutingChain>, ApiError> {
-        self.list_resources(&Self::routing_chains_prefix(realm_id)).await
+        self.list_resources(&Self::routing_chains_prefix(realm_id))
+            .await
     }
 
     pub async fn delete_routing_chain(
@@ -386,7 +474,8 @@ impl EtcdRepository {
         realm_id: &str,
         routing_chain_id: &str,
     ) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::routing_chain_key(realm_id, routing_chain_id)).await
+        self.delete_resource(&Self::routing_chain_key(realm_id, routing_chain_id))
+            .await
     }
 
     // --- Hub Methods ---
@@ -404,19 +493,31 @@ impl EtcdRepository {
     }
 
     pub async fn save_hub(&self, realm_id: &str, hub: &Hub) -> Result<(), ApiError> {
-        self.save_resource(&Self::hub_key(realm_id, &hub.name), hub).await
+        self.save_resource(&Self::hub_key(realm_id, &hub.name), hub)
+            .await
     }
 
     pub async fn get_hub(&self, realm_id: &str, hub_id: &str) -> Result<Hub, ApiError> {
         self.get_resource(&Self::hub_key(realm_id, hub_id)).await
     }
 
-    pub async fn save_hub_conditional(&self, realm_id: &str, hub: &Hub, expected_revision: i64) -> Result<bool, ApiError> {
-        self.save_resource_conditional(&Self::hub_key(realm_id, &hub.name), hub, expected_revision).await
+    pub async fn save_hub_conditional(
+        &self,
+        realm_id: &str,
+        hub: &Hub,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::hub_key(realm_id, &hub.name), hub, expected_revision)
+            .await
     }
 
-    pub async fn get_hub_with_revision(&self, realm_id: &str, hub_id: &str) -> Result<(Hub, i64), ApiError> {
-        self.get_resource_with_revision(&Self::hub_key(realm_id, hub_id)).await
+    pub async fn get_hub_with_revision(
+        &self,
+        realm_id: &str,
+        hub_id: &str,
+    ) -> Result<(Hub, i64), ApiError> {
+        self.get_resource_with_revision(&Self::hub_key(realm_id, hub_id))
+            .await
     }
 
     pub async fn list_hubs(&self, realm_id: &str) -> Result<Vec<Hub>, ApiError> {
@@ -424,7 +525,11 @@ impl EtcdRepository {
     }
 
     pub async fn delete_hub(&self, realm_id: &str, hub_id: &str) -> Result<bool, ApiError> {
-        self.cascade_delete(&Self::hub_key(realm_id, hub_id), &Self::hub_dir(realm_id, hub_id)).await
+        self.cascade_delete(
+            &Self::hub_key(realm_id, hub_id),
+            &Self::hub_dir(realm_id, hub_id),
+        )
+        .await
     }
 
     // --- Service Methods ---
@@ -446,7 +551,8 @@ impl EtcdRepository {
         hub_id: &str,
         service: &Service,
     ) -> Result<(), ApiError> {
-        self.save_resource(&Self::service_key(realm_id, hub_id, &service.name), service).await
+        self.save_resource(&Self::service_key(realm_id, hub_id, &service.name), service)
+            .await
     }
 
     pub async fn save_service_conditional(
@@ -456,7 +562,12 @@ impl EtcdRepository {
         service: &Service,
         expected_revision: i64,
     ) -> Result<bool, ApiError> {
-        self.save_resource_conditional(&Self::service_key(realm_id, hub_id, &service.name), service, expected_revision).await
+        self.save_resource_conditional(
+            &Self::service_key(realm_id, hub_id, &service.name),
+            service,
+            expected_revision,
+        )
+        .await
     }
 
     pub async fn get_service(
@@ -465,7 +576,8 @@ impl EtcdRepository {
         hub_id: &str,
         service_id: &str,
     ) -> Result<Service, ApiError> {
-        self.get_resource(&Self::service_key(realm_id, hub_id, service_id)).await
+        self.get_resource(&Self::service_key(realm_id, hub_id, service_id))
+            .await
     }
 
     pub async fn get_service_with_revision(
@@ -474,11 +586,17 @@ impl EtcdRepository {
         hub_id: &str,
         service_id: &str,
     ) -> Result<(Service, i64), ApiError> {
-        self.get_resource_with_revision(&Self::service_key(realm_id, hub_id, service_id)).await
+        self.get_resource_with_revision(&Self::service_key(realm_id, hub_id, service_id))
+            .await
     }
 
-    pub async fn list_services(&self, realm_id: &str, hub_id: &str) -> Result<Vec<Service>, ApiError> {
-        self.list_resources(&Self::services_prefix(realm_id, hub_id)).await
+    pub async fn list_services(
+        &self,
+        realm_id: &str,
+        hub_id: &str,
+    ) -> Result<Vec<Service>, ApiError> {
+        self.list_resources(&Self::services_prefix(realm_id, hub_id))
+            .await
     }
 
     pub async fn delete_service(
@@ -487,6 +605,7 @@ impl EtcdRepository {
         hub_id: &str,
         service_id: &str,
     ) -> Result<bool, ApiError> {
-        self.delete_resource(&Self::service_key(realm_id, hub_id, service_id)).await
+        self.delete_resource(&Self::service_key(realm_id, hub_id, service_id))
+            .await
     }
 }

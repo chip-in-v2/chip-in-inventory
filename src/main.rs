@@ -4,9 +4,9 @@
 //! using etcd as the backend data store.
 //! The data models for the repository are defined at:
 //!   https://github.com/chip-in-v2/docusaurus/tree/main/root/openapi/inventory
+mod config;
 mod models;
 mod repository;
-mod config;
 
 use axum::{
     Json, Router,
@@ -30,7 +30,9 @@ type AppState = EtcdRepository;
 /// Validates ID using an allowlist approach to prevent path traversal and injection.
 fn validate_id(id: &str) -> Result<(), ApiError> {
     // Allows alphanumeric characters, hyphen, underscore, dot (for FQDNs), and @ (for APEX subdomains).
-    let is_valid = id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '@');
+    let is_valid = id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '@');
 
     if id.is_empty() || !is_valid {
         return Err(ApiError::BadRequest(format!("Invalid ID format: {}", id)));
@@ -68,8 +70,7 @@ async fn main() {
     let etcd_endpoints_str =
         env::var("ETCD_ENDPOINTS").unwrap_or_else(|_| "http://127.0.0.1:2379".to_string());
     let etcd_endpoints: Vec<&str> = etcd_endpoints_str.split(',').collect();
-    let config_path =
-        env::var("CONFIG_FILE").unwrap_or_else(|_| "conf/config.yaml".to_string());
+    let config_path = env::var("CONFIG_FILE").unwrap_or_else(|_| "conf/config.yaml".to_string());
 
     let repository = EtcdRepository::new(&etcd_endpoints)
         .await
@@ -92,7 +93,10 @@ async fn main() {
             "/realms/{realm_id}",
             get(get_realm).put(update_realm).delete(delete_realm),
         )
-        .route("/realms/{realm_id}/zones", get(list_zones).post(create_zone))
+        .route(
+            "/realms/{realm_id}/zones",
+            get(list_zones).post(create_zone),
+        )
         .route(
             "/realms/{realm_id}/zones/{zone_id}",
             get(get_zone).put(update_zone).delete(delete_zone),
@@ -205,12 +209,18 @@ impl IntoResponse for ApiError {
         let (status, message) = match self {
             ApiError::Etcd(e) => {
                 tracing::error!("etcd client error: {:?}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Datastore error".to_string())
-            },
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Datastore error".to_string(),
+                )
+            }
             ApiError::Json(e) => {
                 tracing::error!("JSON error: {:?}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("JSON processing error: {}", e))
-            },
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("JSON processing error: {}", e),
+                )
+            }
             ApiError::NotFound => (StatusCode::NOT_FOUND, "Resource not found".to_string()),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             ApiError::Conflict(msg) => (StatusCode::CONFLICT, msg),
@@ -270,8 +280,7 @@ async fn get_realm(
     Path(realm_id): Path<String>,
 ) -> Result<Json<Realm>, ApiError> {
     validate_id(&realm_id)?;
-    repo.get_realm(&realm_id).await
-        .map(Json)
+    repo.get_realm(&realm_id).await.map(Json)
 }
 
 // PUT /realms/:realm_id
@@ -302,7 +311,10 @@ async fn update_realm(
             administrators: payload.administrators.clone(),
             expired_at: payload.expired_at.clone(),
             disabled: payload.disabled,
-            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            created_at: payload
+                .created_at
+                .or_else(|| existing.map(|e| e.created_at))
+                .unwrap_or(now),
             updated_at: payload.updated_at.unwrap_or(now),
         };
 
@@ -406,7 +418,10 @@ async fn update_service(
     validate_id(&service_id)?;
     let mut attempts = 0;
     loop {
-        let (existing, revision) = match repo.get_service_with_revision(&realm_id, &hub_id, &service_id).await {
+        let (existing, revision) = match repo
+            .get_service_with_revision(&realm_id, &hub_id, &service_id)
+            .await
+        {
             Ok((s, rev)) => (Some(s), rev),
             Err(ApiError::NotFound) => (None, 0),
             Err(e) => return Err(e),
@@ -423,12 +438,18 @@ async fn update_service(
             singleton: payload.singleton,
             hub: String::new(),
             urn: String::new(),
-            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            created_at: payload
+                .created_at
+                .or_else(|| existing.map(|e| e.created_at))
+                .unwrap_or(now),
             updated_at: payload.updated_at.unwrap_or(now),
         };
 
         populate_service_fields(&mut service, &realm_id, &hub_id);
-        if repo.save_service_conditional(&realm_id, &hub_id, &service, revision).await? {
+        if repo
+            .save_service_conditional(&realm_id, &hub_id, &service, revision)
+            .await?
+        {
             return Ok(Json(service));
         }
         attempts += 1;
@@ -447,9 +468,7 @@ async fn delete_service(
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     validate_id(&service_id)?;
-    let deleted = repo
-        .delete_service(&realm_id, &hub_id, &service_id)
-        .await?;
+    let deleted = repo.delete_service(&realm_id, &hub_id, &service_id).await?;
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -546,7 +565,10 @@ async fn update_hub(
             realm: None,
             urn: None,
             attributes: payload.attributes.clone(),
-            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            created_at: payload
+                .created_at
+                .or_else(|| existing.map(|e| e.created_at))
+                .unwrap_or(now),
             updated_at: payload.updated_at.unwrap_or(now),
         };
 
@@ -660,7 +682,10 @@ async fn update_routing_chain(
     validate_id(&routing_chain_id)?;
     let mut attempts = 0;
     loop {
-        let (existing, revision) = match repo.get_routing_chain_with_revision(&realm_id, &routing_chain_id).await {
+        let (existing, revision) = match repo
+            .get_routing_chain_with_revision(&realm_id, &routing_chain_id)
+            .await
+        {
             Ok((rc, rev)) => (Some(rc), rev),
             Err(ApiError::NotFound) => (None, 0),
             Err(e) => return Err(e),
@@ -673,12 +698,18 @@ async fn update_routing_chain(
             urn: None,
             realm: None,
             rules: payload.rules.clone().unwrap_or_default(),
-            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            created_at: payload
+                .created_at
+                .or_else(|| existing.map(|e| e.created_at))
+                .unwrap_or(now),
             updated_at: payload.updated_at.unwrap_or(now),
         };
 
         populate_routing_chain_fields(&mut rchain, &realm_id);
-        if repo.save_routing_chain_conditional(&realm_id, &rchain, revision).await? {
+        if repo
+            .save_routing_chain_conditional(&realm_id, &rchain, revision)
+            .await?
+        {
             return Ok(Json(rchain));
         }
         attempts += 1;
@@ -696,7 +727,9 @@ async fn delete_routing_chain(
 ) -> Result<StatusCode, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
-    let deleted = repo.delete_routing_chain(&realm_id, &routing_chain_id).await?;
+    let deleted = repo
+        .delete_routing_chain(&realm_id, &routing_chain_id)
+        .await?;
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -739,13 +772,12 @@ async fn resolve_vhost_fqdn(
     subdomain_urn: &str,
     _vhost_name: &str,
 ) -> Result<Option<String>, ApiError> {
-    if let Some((realm_name, zone_name, subdomain_name)) = Subdomain::parse_urn(subdomain_urn) {
-        if let Ok(subdomain) = repo
+    if let Some((realm_name, zone_name, subdomain_name)) = Subdomain::parse_urn(subdomain_urn)
+        && let Ok(subdomain) = repo
             .get_subdomain(&realm_name, &zone_name, &subdomain_name)
             .await
-        {
-            return Ok(subdomain.fqdn);
-        }
+    {
+        return Ok(subdomain.fqdn);
     }
     Ok(None)
 }
@@ -846,7 +878,10 @@ async fn update_virtual_host(
     validate_id(&virtual_host_id)?;
     let mut attempts = 0;
     loop {
-        let (existing, revision) = match repo.get_virtual_host_with_revision(&realm_id, &virtual_host_id).await {
+        let (existing, revision) = match repo
+            .get_virtual_host_with_revision(&realm_id, &virtual_host_id)
+            .await
+        {
             Ok((vh, rev)) => (Some(vh), rev),
             Err(ApiError::NotFound) => (None, 0),
             Err(e) => return Err(e),
@@ -865,11 +900,17 @@ async fn update_virtual_host(
             certificate: payload.certificate.clone(),
             key: payload.key.clone(),
             disabled: payload.disabled,
-            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            created_at: payload
+                .created_at
+                .or_else(|| existing.map(|e| e.created_at))
+                .unwrap_or(now),
             updated_at: payload.updated_at.unwrap_or(now),
         };
 
-        if repo.save_virtual_host_conditional(&realm_id, &vhost, revision).await? {
+        if repo
+            .save_virtual_host_conditional(&realm_id, &vhost, revision)
+            .await?
+        {
             let fqdn = resolve_vhost_fqdn(&repo, &vhost.subdomain, &vhost.name).await?;
             return Ok(Json(vhost.into_response(fqdn)));
         }
@@ -955,7 +996,9 @@ async fn get_subdomain(
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     validate_id(&subdomain_id)?;
-    let mut subdomain = repo.get_subdomain(&realm_id, &zone_id, &subdomain_id).await?;
+    let mut subdomain = repo
+        .get_subdomain(&realm_id, &zone_id, &subdomain_id)
+        .await?;
 
     populate_subdomain_fields(&mut subdomain, &realm_id, &zone_id);
     Ok(Json(subdomain))
@@ -973,7 +1016,10 @@ async fn update_subdomain(
     validate_id(&subdomain_id)?;
     let mut attempts = 0;
     loop {
-        let (existing, revision) = match repo.get_subdomain_with_revision(&realm_id, &zone_id, &subdomain_id).await {
+        let (existing, revision) = match repo
+            .get_subdomain_with_revision(&realm_id, &zone_id, &subdomain_id)
+            .await
+        {
             Ok((s, rev)) => (Some(s), rev),
             Err(ApiError::NotFound) => (None, 0),
             Err(e) => return Err(e),
@@ -989,12 +1035,18 @@ async fn update_subdomain(
             fqdn: None,
             zone: None,
             urn: None,
-            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            created_at: payload
+                .created_at
+                .or_else(|| existing.map(|e| e.created_at))
+                .unwrap_or(now),
             updated_at: payload.updated_at.unwrap_or(now),
         };
 
         populate_subdomain_fields(&mut subdomain, &realm_id, &zone_id);
-        if repo.save_subdomain_conditional(&realm_id, &zone_id, &subdomain, revision).await? {
+        if repo
+            .save_subdomain_conditional(&realm_id, &zone_id, &subdomain, revision)
+            .await?
+        {
             return Ok(Json(subdomain));
         }
         attempts += 1;
@@ -1103,12 +1155,18 @@ async fn update_zone(
             acme_certificate_provider: payload.acme_certificate_provider.clone(),
             urn: None,
             realm: Some(Realm::generate_urn(&realm_id)),
-            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            created_at: payload
+                .created_at
+                .or_else(|| existing.map(|e| e.created_at))
+                .unwrap_or(now),
             updated_at: payload.updated_at.unwrap_or(now),
         };
 
         populate_zone_fields(&mut zone, &realm_id);
-        if repo.save_zone_conditional(&realm_id, &zone, revision).await? {
+        if repo
+            .save_zone_conditional(&realm_id, &zone, revision)
+            .await?
+        {
             return Ok(Json(zone));
         }
         attempts += 1;
@@ -1126,8 +1184,7 @@ async fn delete_zone(
 ) -> Result<StatusCode, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
-    let deleted = repo
-        .delete_zone(&realm_id, &zone_id).await?;
+    let deleted = repo.delete_zone(&realm_id, &zone_id).await?;
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
