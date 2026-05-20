@@ -4,7 +4,7 @@
 //! resource mapping for the inventory system.
 use crate::ApiError;
 use crate::models::{Hub, Realm, RoutingChain, Service, Subdomain, VirtualHost, Zone};
-use etcd_client::{Client, GetOptions, SortOrder, SortTarget, DeleteOptions};
+use etcd_client::{Client, GetOptions, SortOrder, SortTarget, DeleteOptions, Compare, CompareOp, Txn, TxnOp, TxnOpResponse};
 use serde::{de::DeserializeOwned, Serialize};
 
 const REALM_KEY_PREFIX: &str = "realms/";
@@ -65,17 +65,47 @@ impl EtcdRepository {
 
     async fn cascade_delete(&self, exact_key: &str, dir_prefix: &str) -> Result<bool, ApiError> {
         let mut client = self.client.clone();
-        let resp = client.delete(exact_key, None).await?;
-        let deleted = resp.deleted() > 0;
-        let options = DeleteOptions::new().with_prefix();
-        client.delete(dir_prefix, Some(options)).await?;
-        Ok(deleted)
+        let op_del_exact = TxnOp::delete(exact_key, None);
+        let op_del_prefix = TxnOp::delete(dir_prefix, Some(DeleteOptions::new().with_prefix()));
+        let txn = Txn::new().and_then(vec![op_del_exact, op_del_prefix]);
+        let resp = client.txn(txn).await?;
+        if let Some(TxnOpResponse::Delete(del_resp)) = resp.op_responses().first() {
+            Ok(del_resp.deleted() > 0)
+        } else {
+            Ok(false)
+        }
     }
 
     async fn delete_resource(&self, key: &str) -> Result<bool, ApiError> {
         let mut client = self.client.clone();
         let resp = client.delete(key, None).await?;
         Ok(resp.deleted() > 0)
+    }
+
+    async fn get_resource_with_revision<T: DeserializeOwned>(&self, key: &str) -> Result<(T, i64), ApiError> {
+        let mut client = self.client.clone();
+        let resp = client.get(key, None).await?;
+        if let Some(kv) = resp.kvs().first() {
+            let resource = serde_json::from_slice(kv.value())?;
+            Ok((resource, kv.mod_revision()))
+        } else {
+            Err(ApiError::NotFound)
+        }
+    }
+
+    async fn save_resource_conditional<T: Serialize>(&self, key: &str, resource: &T, expected_revision: i64) -> Result<bool, ApiError> {
+        let mut client = self.client.clone();
+        let value = serde_json::to_string(resource)?;
+        let compare = if expected_revision == 0 {
+            Compare::version(key, CompareOp::Equal, 0)
+        } else {
+            Compare::mod_revision(key, CompareOp::Equal, expected_revision)
+        };
+        let txn = Txn::new()
+            .when(vec![compare])
+            .and_then(vec![TxnOp::put(key, value, None)]);
+        let resp = client.txn(txn).await?;
+        Ok(resp.succeeded())
     }
 
     // --- Realm Methods ---
@@ -92,8 +122,16 @@ impl EtcdRepository {
         self.save_resource(&Self::realm_key(&realm.name), realm).await
     }
 
+    pub async fn save_realm_conditional(&self, realm: &Realm, expected_revision: i64) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::realm_key(&realm.name), realm, expected_revision).await
+    }
+
     pub async fn get_realm(&self, id: &str) -> Result<Realm, ApiError> {
         self.get_resource(&Self::realm_key(id)).await
+    }
+
+    pub async fn get_realm_with_revision(&self, id: &str) -> Result<(Realm, i64), ApiError> {
+        self.get_resource_with_revision(&Self::realm_key(id)).await
     }
 
     pub async fn list_realms(&self) -> Result<Vec<Realm>, ApiError> {
@@ -122,8 +160,16 @@ impl EtcdRepository {
         self.save_resource(&Self::zone_key(realm_id, &zone.name), zone).await
     }
 
+    pub async fn save_zone_conditional(&self, realm_id: &str, zone: &Zone, expected_revision: i64) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::zone_key(realm_id, &zone.name), zone, expected_revision).await
+    }
+
     pub async fn get_zone(&self, realm_id: &str, zone_id: &str) -> Result<Zone, ApiError> {
         self.get_resource(&Self::zone_key(realm_id, zone_id)).await
+    }
+
+    pub async fn get_zone_with_revision(&self, realm_id: &str, zone_id: &str) -> Result<(Zone, i64), ApiError> {
+        self.get_resource_with_revision(&Self::zone_key(realm_id, zone_id)).await
     }
 
     pub async fn list_zones(&self, realm_id: &str) -> Result<Vec<Zone>, ApiError> {
@@ -159,6 +205,16 @@ impl EtcdRepository {
         self.save_resource(&Self::subdomain_key(realm_id, zone_id, &subdomain.name), subdomain).await
     }
 
+    pub async fn save_subdomain_conditional(
+        &self,
+        realm_id: &str,
+        zone_id: &str,
+        subdomain: &Subdomain,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::subdomain_key(realm_id, zone_id, &subdomain.name), subdomain, expected_revision).await
+    }
+
     pub async fn get_subdomain(
         &self,
         realm_id: &str,
@@ -166,6 +222,15 @@ impl EtcdRepository {
         subdomain_id: &str,
     ) -> Result<Subdomain, ApiError> {
         self.get_resource(&Self::subdomain_key(realm_id, zone_id, subdomain_id)).await
+    }
+
+    pub async fn get_subdomain_with_revision(
+        &self,
+        realm_id: &str,
+        zone_id: &str,
+        subdomain_id: &str,
+    ) -> Result<(Subdomain, i64), ApiError> {
+        self.get_resource_with_revision(&Self::subdomain_key(realm_id, zone_id, subdomain_id)).await
     }
 
     pub async fn list_subdomains(
@@ -193,10 +258,12 @@ impl EtcdRepository {
                             let parts: Vec<&str> = key_str.split('/').collect();
                             if parts.len() >= 6 {
                                 let zone_id = parts[3];
-                                subdomain.urn = Some(Subdomain::generate_urn(realm_id, zone_id, &subdomain.name));
+                                subdomain.urn =
+                                    Some(Subdomain::generate_urn(realm_id, zone_id, &subdomain.name));
                                 subdomain.realm = Some(Realm::generate_urn(realm_id));
                                 subdomain.zone = Some(Zone::generate_urn(realm_id, zone_id));
-                                subdomain.fqdn = Some(Subdomain::generate_fqdn(zone_id, &subdomain.name));
+                                subdomain.fqdn =
+                                    Some(Subdomain::generate_fqdn(zone_id, &subdomain.name));
                             }
                             subdomains.push(subdomain);
                         }
@@ -237,12 +304,24 @@ impl EtcdRepository {
         self.save_resource(&Self::virtual_host_key(realm_id, &virtual_host.name), virtual_host).await
     }
 
+    pub async fn save_virtual_host_conditional(&self, realm_id: &str, virtual_host: &VirtualHost, expected_revision: i64) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::virtual_host_key(realm_id, &virtual_host.name), virtual_host, expected_revision).await
+    }
+
     pub async fn get_virtual_host(
         &self,
         realm_id: &str,
         virtual_host_id: &str,
     ) -> Result<VirtualHost, ApiError> {
         self.get_resource(&Self::virtual_host_key(realm_id, virtual_host_id)).await
+    }
+
+    pub async fn get_virtual_host_with_revision(
+        &self,
+        realm_id: &str,
+        virtual_host_id: &str,
+    ) -> Result<(VirtualHost, i64), ApiError> {
+        self.get_resource_with_revision(&Self::virtual_host_key(realm_id, virtual_host_id)).await
     }
 
     pub async fn list_virtual_hosts(&self, realm_id: &str) -> Result<Vec<VirtualHost>, ApiError> {
@@ -278,12 +357,24 @@ impl EtcdRepository {
         self.save_resource(&Self::routing_chain_key(realm_id, &routing_chain.name), routing_chain).await
     }
 
+    pub async fn save_routing_chain_conditional(&self, realm_id: &str, routing_chain: &RoutingChain, expected_revision: i64) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::routing_chain_key(realm_id, &routing_chain.name), routing_chain, expected_revision).await
+    }
+
     pub async fn get_routing_chain(
         &self,
         realm_id: &str,
         routing_chain_id: &str,
     ) -> Result<RoutingChain, ApiError> {
         self.get_resource(&Self::routing_chain_key(realm_id, routing_chain_id)).await
+    }
+
+    pub async fn get_routing_chain_with_revision(
+        &self,
+        realm_id: &str,
+        routing_chain_id: &str,
+    ) -> Result<(RoutingChain, i64), ApiError> {
+        self.get_resource_with_revision(&Self::routing_chain_key(realm_id, routing_chain_id)).await
     }
 
     pub async fn list_routing_chains(&self, realm_id: &str) -> Result<Vec<RoutingChain>, ApiError> {
@@ -320,6 +411,14 @@ impl EtcdRepository {
         self.get_resource(&Self::hub_key(realm_id, hub_id)).await
     }
 
+    pub async fn save_hub_conditional(&self, realm_id: &str, hub: &Hub, expected_revision: i64) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::hub_key(realm_id, &hub.name), hub, expected_revision).await
+    }
+
+    pub async fn get_hub_with_revision(&self, realm_id: &str, hub_id: &str) -> Result<(Hub, i64), ApiError> {
+        self.get_resource_with_revision(&Self::hub_key(realm_id, hub_id)).await
+    }
+
     pub async fn list_hubs(&self, realm_id: &str) -> Result<Vec<Hub>, ApiError> {
         self.list_resources(&Self::hubs_prefix(realm_id)).await
     }
@@ -350,6 +449,16 @@ impl EtcdRepository {
         self.save_resource(&Self::service_key(realm_id, hub_id, &service.name), service).await
     }
 
+    pub async fn save_service_conditional(
+        &self,
+        realm_id: &str,
+        hub_id: &str,
+        service: &Service,
+        expected_revision: i64,
+    ) -> Result<bool, ApiError> {
+        self.save_resource_conditional(&Self::service_key(realm_id, hub_id, &service.name), service, expected_revision).await
+    }
+
     pub async fn get_service(
         &self,
         realm_id: &str,
@@ -357,6 +466,15 @@ impl EtcdRepository {
         service_id: &str,
     ) -> Result<Service, ApiError> {
         self.get_resource(&Self::service_key(realm_id, hub_id, service_id)).await
+    }
+
+    pub async fn get_service_with_revision(
+        &self,
+        realm_id: &str,
+        hub_id: &str,
+        service_id: &str,
+    ) -> Result<(Service, i64), ApiError> {
+        self.get_resource_with_revision(&Self::service_key(realm_id, hub_id, service_id)).await
     }
 
     pub async fn list_services(&self, realm_id: &str, hub_id: &str) -> Result<Vec<Service>, ApiError> {

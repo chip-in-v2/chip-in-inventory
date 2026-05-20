@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::path::Path;
 use tracing::info;
 use crate::ApiError;
-use futures::future::join_all;
+use futures::future::try_join_all;
 
 #[derive(Deserialize)]
 struct Config {
@@ -164,8 +164,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     zone_config.urn.as_ref(),
                     &zone_urn,
                 ) {
-                    tracing::error!("Skipping Zone initialization: {}", e);
-                    return;
+                    return Err(e);
                 }
 
                 let now = chrono::Utc::now();
@@ -180,9 +179,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     created_at: zone_config.base.created_at.unwrap_or(now),
                     updated_at: zone_config.base.updated_at.unwrap_or(now),
                 };
-                if let Err(e) = repo.save_zone(&realm_name, &zone).await {
-                    tracing::error!("Failed to save zone {}: {}", zone.name, e);
-                }
+                repo.save_zone(&realm_name, &zone).await?;
 
                 // Subdomains
                 let sub_futures = zone_config.subdomains.into_iter().map(|sub_config| {
@@ -197,8 +194,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             sub_config.urn.as_ref(),
                             &sub_urn,
                         ) {
-                            tracing::error!("Skipping Subdomain initialization: {}", e);
-                            return;
+                            return Err(e);
                         }
 
                         let now = chrono::Utc::now();
@@ -215,15 +211,15 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             created_at: sub_config.base.created_at.unwrap_or(now),
                             updated_at: sub_config.base.updated_at.unwrap_or(now),
                         };
-                        if let Err(e) = repo.save_subdomain(&realm_name, &zone_name, &subdomain).await {
-                            tracing::error!("Failed to save subdomain {}: {}", subdomain.name, e);
-                        }
+                        repo.save_subdomain(&realm_name, &zone_name, &subdomain).await?;
+                        Ok(())
                     }
                 });
-                join_all(sub_futures).await;
+                try_join_all(sub_futures).await?;
+                Ok(())
             }
         });
-        join_all(zone_futures).await;
+        try_join_all(zone_futures).await?;
 
         // VirtualHosts
         let vhost_futures = realm_config.virtual_hosts.into_iter().map(|vhost_config| {
@@ -237,8 +233,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     vhost_config.urn.as_ref(),
                     &vhost_urn,
                 ) {
-                    tracing::error!("Skipping VirtualHost initialization: {}", e);
-                    return;
+                    return Err(e);
                 }
 
                 let now = chrono::Utc::now();
@@ -258,12 +253,11 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     created_at: vhost_config.base.created_at.unwrap_or(now),
                     updated_at: vhost_config.base.updated_at.unwrap_or(now),
                 };
-                if let Err(e) = repo.save_virtual_host(&realm_name, &vhost).await {
-                    tracing::error!("Failed to save virtual host {}: {}", vhost.name, e);
-                }
+                repo.save_virtual_host(&realm_name, &vhost).await?;
+                Ok(())
             }
         });
-        join_all(vhost_futures).await;
+        try_join_all(vhost_futures).await?;
 
         // RoutingChains
         let rc_futures = realm_config.routing_chains.into_iter().map(|rc_config| {
@@ -278,8 +272,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     rc_config.urn.as_ref(),
                     &rc_urn,
                 ) {
-                    tracing::error!("Skipping RoutingChain initialization: {}", e);
-                    return;
+                    return Err(e);
                 }
 
                 let now = chrono::Utc::now();
@@ -293,12 +286,11 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     created_at: rc_config.base.created_at.unwrap_or(now),
                     updated_at: rc_config.base.updated_at.unwrap_or(now),
                 };
-                if let Err(e) = repo.save_routing_chain(&realm_name, &rc).await {
-                    tracing::error!("Failed to save routing chain {}: {}", rc.name, e);
-                }
+                repo.save_routing_chain(&realm_name, &rc).await?;
+                Ok(())
             }
         });
-        join_all(rc_futures).await;
+        try_join_all(rc_futures).await?;
 
         // Hubs
         let hub_futures = realm_config.hubs.into_iter().map(|hub_config| {
@@ -312,8 +304,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     hub_config.urn.as_ref(),
                     &hub_urn,
                 ) {
-                    tracing::error!("Skipping Hub initialization: {}", e);
-                    return;
+                    return Err(e);
                 }
 
                 let now = chrono::Utc::now();
@@ -332,9 +323,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                     created_at: hub_config.base.created_at.unwrap_or(now),
                     updated_at: hub_config.base.updated_at.unwrap_or(now),
                 };
-                if let Err(e) = repo.save_hub(&realm_name, &hub).await {
-                    tracing::error!("Failed to save hub {}: {}", hub.name, e);
-                }
+                repo.save_hub(&realm_name, &hub).await?;
 
                 // Services
                 let svc_futures = hub_config.services.into_iter().map(|svc_config| {
@@ -349,8 +338,7 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             svc_config.urn.as_ref(),
                             &svc_urn,
                         ) {
-                            tracing::error!("Skipping Service initialization: {}", e);
-                            return;
+                            return Err(e);
                         }
 
                         let now = chrono::Utc::now();
@@ -368,15 +356,15 @@ pub async fn load_initial_config(repo: &EtcdRepository, config_path: &str) -> Re
                             created_at: svc_config.base.created_at.unwrap_or(now),
                             updated_at: svc_config.base.updated_at.unwrap_or(now),
                         };
-                        if let Err(e) = repo.save_service(&realm_name, &hub_name, &svc).await {
-                            tracing::error!("Failed to save service {}: {}", svc.name, e);
-                        }
+                        repo.save_service(&realm_name, &hub_name, &svc).await?;
+                        Ok(())
                     }
                 });
-                join_all(svc_futures).await;
+                try_join_all(svc_futures).await?;
+                Ok(())
             }
         });
-        join_all(hub_futures).await;
+        try_join_all(hub_futures).await?;
     }
     Ok(())
 }

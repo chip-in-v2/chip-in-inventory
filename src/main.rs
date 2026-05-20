@@ -282,26 +282,39 @@ async fn update_realm(
     Json(payload): Json<UpdateRealm>,
 ) -> Result<Json<Realm>, ApiError> {
     validate_id(&realm_id)?;
-    let existing = repo.get_realm(&realm_id).await.ok();
-    let now = chrono::Utc::now();
-    let realm = Realm {
-        name: realm_id.clone(),
-        description: payload.description,
-        title: payload.title,
-        urn: Some(Realm::generate_urn(&realm_id)),
-        device_id_signing_key: payload.device_id_signing_key,
-        device_id_verification_key: payload.device_id_verification_key,
-        cacert: payload.cacert,
-        session_timeout: payload.session_timeout,
-        administrators: payload.administrators,
-        expired_at: payload.expired_at,
-        disabled: payload.disabled,
-        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
-        updated_at: payload.updated_at.unwrap_or(now),
-    };
+    let mut attempts = 0;
+    loop {
+        let (existing, revision) = match repo.get_realm_with_revision(&realm_id).await {
+            Ok((r, rev)) => (Some(r), rev),
+            Err(ApiError::NotFound) => (None, 0),
+            Err(e) => return Err(e),
+        };
+        let now = chrono::Utc::now();
+        let realm = Realm {
+            name: realm_id.clone(),
+            description: payload.description.clone(),
+            title: payload.title.clone(),
+            urn: Some(Realm::generate_urn(&realm_id)),
+            device_id_signing_key: payload.device_id_signing_key.clone(),
+            device_id_verification_key: payload.device_id_verification_key.clone(),
+            cacert: payload.cacert.clone(),
+            session_timeout: payload.session_timeout,
+            administrators: payload.administrators.clone(),
+            expired_at: payload.expired_at.clone(),
+            disabled: payload.disabled,
+            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            updated_at: payload.updated_at.unwrap_or(now),
+        };
 
-    repo.save_realm(&realm).await?;
-    Ok(Json(realm))
+        if repo.save_realm_conditional(&realm, revision).await? {
+            return Ok(Json(realm));
+        }
+        attempts += 1;
+        if attempts >= 5 {
+            return Err(ApiError::Conflict("Concurrent update detected".to_string()));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5 * attempts)).await;
+    }
 }
 
 // DELETE /realms/:realm_id
@@ -391,27 +404,39 @@ async fn update_service(
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     validate_id(&service_id)?;
-    let existing = repo.get_service(&realm_id, &hub_id, &service_id).await.ok();
-    let now = chrono::Utc::now();
-    let mut service = Service {
-        name: service_id.clone(),
-        title: payload.title,
-        description: payload.description,
-        realm: String::new(),
-        provider: payload.provider,
-        consumers: payload.consumers,
-        availability_management: payload.availability_management,
-        singleton: payload.singleton,
-        hub: String::new(),
-        urn: String::new(),
-        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
-        updated_at: payload.updated_at.unwrap_or(now),
-    };
+    let mut attempts = 0;
+    loop {
+        let (existing, revision) = match repo.get_service_with_revision(&realm_id, &hub_id, &service_id).await {
+            Ok((s, rev)) => (Some(s), rev),
+            Err(ApiError::NotFound) => (None, 0),
+            Err(e) => return Err(e),
+        };
+        let now = chrono::Utc::now();
+        let mut service = Service {
+            name: service_id.clone(),
+            title: payload.title.clone(),
+            description: payload.description.clone(),
+            realm: String::new(),
+            provider: payload.provider.clone(),
+            consumers: payload.consumers.clone(),
+            availability_management: payload.availability_management.clone(),
+            singleton: payload.singleton,
+            hub: String::new(),
+            urn: String::new(),
+            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            updated_at: payload.updated_at.unwrap_or(now),
+        };
 
-    populate_service_fields(&mut service, &realm_id, &hub_id);
-    repo.save_service(&realm_id, &hub_id, &service).await?;
-
-    Ok(Json(service))
+        populate_service_fields(&mut service, &realm_id, &hub_id);
+        if repo.save_service_conditional(&realm_id, &hub_id, &service, revision).await? {
+            return Ok(Json(service));
+        }
+        attempts += 1;
+        if attempts >= 5 {
+            return Err(ApiError::Conflict("Concurrent update detected".to_string()));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5 * attempts)).await;
+    }
 }
 
 // DELETE /realms/:realm_id/hubs/:hub_id/services/:service_id
@@ -501,28 +526,40 @@ async fn update_hub(
 ) -> Result<Json<Hub>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
-    let existing = repo.get_hub(&realm_id, &hub_id).await.ok();
-    let now = chrono::Utc::now();
-    let mut hub = Hub {
-        name: hub_id.clone(),
-        title: payload.title,
-        fqdn: payload.fqdn,
-        description: payload.description,
-        server_address: payload.server_address,
-        server_port: payload.server_port,
-        server_cert: payload.server_cert,
-        server_cert_key: payload.server_cert_key,
-        realm: None,
-        urn: None,
-        attributes: payload.attributes,
-        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
-        updated_at: payload.updated_at.unwrap_or(now),
-    };
+    let mut attempts = 0;
+    loop {
+        let (existing, revision) = match repo.get_hub_with_revision(&realm_id, &hub_id).await {
+            Ok((h, rev)) => (Some(h), rev),
+            Err(ApiError::NotFound) => (None, 0),
+            Err(e) => return Err(e),
+        };
+        let now = chrono::Utc::now();
+        let mut hub = Hub {
+            name: hub_id.clone(),
+            title: payload.title.clone(),
+            fqdn: payload.fqdn.clone(),
+            description: payload.description.clone(),
+            server_address: payload.server_address.clone(),
+            server_port: payload.server_port,
+            server_cert: payload.server_cert.clone(),
+            server_cert_key: payload.server_cert_key.clone(),
+            realm: None,
+            urn: None,
+            attributes: payload.attributes.clone(),
+            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            updated_at: payload.updated_at.unwrap_or(now),
+        };
 
-    populate_hub_fields(&mut hub, &realm_id);
-    repo.save_hub(&realm_id, &hub).await?;
-
-    Ok(Json(hub))
+        populate_hub_fields(&mut hub, &realm_id);
+        if repo.save_hub_conditional(&realm_id, &hub, revision).await? {
+            return Ok(Json(hub));
+        }
+        attempts += 1;
+        if attempts >= 5 {
+            return Err(ApiError::Conflict("Concurrent update detected".to_string()));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5 * attempts)).await;
+    }
 }
 
 // DELETE /realms/:realm_id/hubs/:hub_id
@@ -621,23 +658,35 @@ async fn update_routing_chain(
 ) -> Result<Json<RoutingChain>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
-    let existing = repo.get_routing_chain(&realm_id, &routing_chain_id).await.ok();
-    let now = chrono::Utc::now();
-    let mut rchain = RoutingChain {
-        name: routing_chain_id.clone(),
-        title: payload.title,
-        description: payload.description,
-        urn: None,
-        realm: None,
-        rules: payload.rules.unwrap_or_default(),
-        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
-        updated_at: payload.updated_at.unwrap_or(now),
-    };
+    let mut attempts = 0;
+    loop {
+        let (existing, revision) = match repo.get_routing_chain_with_revision(&realm_id, &routing_chain_id).await {
+            Ok((rc, rev)) => (Some(rc), rev),
+            Err(ApiError::NotFound) => (None, 0),
+            Err(e) => return Err(e),
+        };
+        let now = chrono::Utc::now();
+        let mut rchain = RoutingChain {
+            name: routing_chain_id.clone(),
+            title: payload.title.clone(),
+            description: payload.description.clone(),
+            urn: None,
+            realm: None,
+            rules: payload.rules.clone().unwrap_or_default(),
+            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            updated_at: payload.updated_at.unwrap_or(now),
+        };
 
-    populate_routing_chain_fields(&mut rchain, &realm_id);
-    repo.save_routing_chain(&realm_id, &rchain).await?;
-
-    Ok(Json(rchain))
+        populate_routing_chain_fields(&mut rchain, &realm_id);
+        if repo.save_routing_chain_conditional(&realm_id, &rchain, revision).await? {
+            return Ok(Json(rchain));
+        }
+        attempts += 1;
+        if attempts >= 5 {
+            return Err(ApiError::Conflict("Concurrent update detected".to_string()));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5 * attempts)).await;
+    }
 }
 
 // DELETE /realms/:realm_id/routing-chains/:routing_chain_id
@@ -690,10 +739,14 @@ async fn resolve_vhost_fqdn(
     subdomain_urn: &str,
     _vhost_name: &str,
 ) -> Result<Option<String>, ApiError> {
-    if let Some((realm_name, zone_name, subdomain_name)) = Subdomain::parse_urn(subdomain_urn)
-        && let Ok(subdomain) = repo.get_subdomain(&realm_name, &zone_name, &subdomain_name).await {
+    if let Some((realm_name, zone_name, subdomain_name)) = Subdomain::parse_urn(subdomain_urn) {
+        if let Ok(subdomain) = repo
+            .get_subdomain(&realm_name, &zone_name, &subdomain_name)
+            .await
+        {
             return Ok(subdomain.fqdn);
         }
+    }
     Ok(None)
 }
 
@@ -791,30 +844,41 @@ async fn update_virtual_host(
 ) -> Result<Json<VirtualHostResponse>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&virtual_host_id)?;
-    let existing = repo.get_virtual_host(&realm_id, &virtual_host_id).await.ok();
-    let now = chrono::Utc::now();
-    let vhost = VirtualHost {
-        name: virtual_host_id.clone(),
-        title: payload.title,
-        description: payload.description,
-        realm: Some(Realm::generate_urn(&realm_id)),
-        urn: Some(VirtualHost::generate_urn(&realm_id, &virtual_host_id)),
-        subdomain: payload.subdomain,
-        access_log_recorder: payload.access_log_recorder,
-        access_log_max_value_length: payload.access_log_max_value_length,
-        access_log_format: payload.access_log_format,
-        certificate: payload.certificate,
-        key: payload.key,
-        disabled: payload.disabled,
-        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
-        updated_at: payload.updated_at.unwrap_or(now),
-    };
+    let mut attempts = 0;
+    loop {
+        let (existing, revision) = match repo.get_virtual_host_with_revision(&realm_id, &virtual_host_id).await {
+            Ok((vh, rev)) => (Some(vh), rev),
+            Err(ApiError::NotFound) => (None, 0),
+            Err(e) => return Err(e),
+        };
+        let now = chrono::Utc::now();
+        let vhost = VirtualHost {
+            name: virtual_host_id.clone(),
+            title: payload.title.clone(),
+            description: payload.description.clone(),
+            realm: Some(Realm::generate_urn(&realm_id)),
+            urn: Some(VirtualHost::generate_urn(&realm_id, &virtual_host_id)),
+            subdomain: payload.subdomain.clone(),
+            access_log_recorder: payload.access_log_recorder.clone(),
+            access_log_max_value_length: payload.access_log_max_value_length,
+            access_log_format: payload.access_log_format.clone(),
+            certificate: payload.certificate.clone(),
+            key: payload.key.clone(),
+            disabled: payload.disabled,
+            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            updated_at: payload.updated_at.unwrap_or(now),
+        };
 
-    repo.save_virtual_host(&realm_id, &vhost).await?;
-
-    let fqdn = resolve_vhost_fqdn(&repo, &vhost.subdomain, &vhost.name).await?;
-
-    Ok(Json(vhost.into_response(fqdn)))
+        if repo.save_virtual_host_conditional(&realm_id, &vhost, revision).await? {
+            let fqdn = resolve_vhost_fqdn(&repo, &vhost.subdomain, &vhost.name).await?;
+            return Ok(Json(vhost.into_response(fqdn)));
+        }
+        attempts += 1;
+        if attempts >= 5 {
+            return Err(ApiError::Conflict("Concurrent update detected".to_string()));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5 * attempts)).await;
+    }
 }
 
 // DELETE /realms/:realm_id/virtual-hosts/:virtual_host_id
@@ -907,26 +971,38 @@ async fn update_subdomain(
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     validate_id(&subdomain_id)?;
-    let existing = repo.get_subdomain(&realm_id, &zone_id, &subdomain_id).await.ok();
-    let now = chrono::Utc::now();
-    let mut subdomain = Subdomain {
-        name: subdomain_id.clone(),
-        title: payload.title,
-        description: payload.description,
-        realm: payload.realm,
-        destination_realm: payload.destination_realm,
-        share_cookie: payload.share_cookie,
-        fqdn: None,
-        zone: None,
-        urn: None,
-        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
-        updated_at: payload.updated_at.unwrap_or(now),
-    };
+    let mut attempts = 0;
+    loop {
+        let (existing, revision) = match repo.get_subdomain_with_revision(&realm_id, &zone_id, &subdomain_id).await {
+            Ok((s, rev)) => (Some(s), rev),
+            Err(ApiError::NotFound) => (None, 0),
+            Err(e) => return Err(e),
+        };
+        let now = chrono::Utc::now();
+        let mut subdomain = Subdomain {
+            name: subdomain_id.clone(),
+            title: payload.title.clone(),
+            description: payload.description.clone(),
+            realm: payload.realm.clone(),
+            destination_realm: payload.destination_realm.clone(),
+            share_cookie: payload.share_cookie,
+            fqdn: None,
+            zone: None,
+            urn: None,
+            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            updated_at: payload.updated_at.unwrap_or(now),
+        };
 
-    populate_subdomain_fields(&mut subdomain, &realm_id, &zone_id);
-    repo.save_subdomain(&realm_id, &zone_id, &subdomain).await?;
-
-    Ok(Json(subdomain))
+        populate_subdomain_fields(&mut subdomain, &realm_id, &zone_id);
+        if repo.save_subdomain_conditional(&realm_id, &zone_id, &subdomain, revision).await? {
+            return Ok(Json(subdomain));
+        }
+        attempts += 1;
+        if attempts >= 5 {
+            return Err(ApiError::Conflict("Concurrent update detected".to_string()));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5 * attempts)).await;
+    }
 }
 
 // DELETE /realms/:realm_id/zones/:zone_id/subdomains/:subdomain_id
@@ -1011,24 +1087,36 @@ async fn update_zone(
 ) -> Result<Json<Zone>, ApiError> {
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
-    let existing = repo.get_zone(&realm_id, &zone_id).await.ok();
-    let now = chrono::Utc::now();
-    let mut zone = Zone {
-        name: zone_id.clone(),
-        title: payload.title,
-        description: payload.description,
-        dns_provider: payload.dns_provider,
-        acme_certificate_provider: payload.acme_certificate_provider,
-        urn: None,
-        realm: Some(Realm::generate_urn(&realm_id)),
-        created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
-        updated_at: payload.updated_at.unwrap_or(now),
-    };
+    let mut attempts = 0;
+    loop {
+        let (existing, revision) = match repo.get_zone_with_revision(&realm_id, &zone_id).await {
+            Ok((z, rev)) => (Some(z), rev),
+            Err(ApiError::NotFound) => (None, 0),
+            Err(e) => return Err(e),
+        };
+        let now = chrono::Utc::now();
+        let mut zone = Zone {
+            name: zone_id.clone(),
+            title: payload.title.clone(),
+            description: payload.description.clone(),
+            dns_provider: payload.dns_provider.clone(),
+            acme_certificate_provider: payload.acme_certificate_provider.clone(),
+            urn: None,
+            realm: Some(Realm::generate_urn(&realm_id)),
+            created_at: payload.created_at.or_else(|| existing.map(|e| e.created_at)).unwrap_or(now),
+            updated_at: payload.updated_at.unwrap_or(now),
+        };
 
-    populate_zone_fields(&mut zone, &realm_id);
-    repo.save_zone(&realm_id, &zone).await?;
-
-    Ok(Json(zone))
+        populate_zone_fields(&mut zone, &realm_id);
+        if repo.save_zone_conditional(&realm_id, &zone, revision).await? {
+            return Ok(Json(zone));
+        }
+        attempts += 1;
+        if attempts >= 5 {
+            return Err(ApiError::Conflict("Concurrent update detected".to_string()));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5 * attempts)).await;
+    }
 }
 
 // DELETE /realms/:realm_id/zones/:zone_id
