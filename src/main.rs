@@ -242,6 +242,7 @@ fn populate_service_fields(service: &mut Service, realm_id: &str, hub_id: &str) 
 
 // GET /realms
 async fn list_realms(State(repo): State<AppState>) -> Result<Json<Vec<Realm>>, ApiError> {
+    info!("Listing realms");
     let realms = repo.list_realms().await?;
     Ok(Json(realms))
 }
@@ -251,6 +252,7 @@ async fn create_realm(
     State(repo): State<AppState>,
     Json(payload): Json<NewRealm>,
 ) -> Result<(StatusCode, Json<Realm>), ApiError> {
+    info!("Creating realm: {}", payload.name);
     validate_id(&payload.name)?;
 
     let now = chrono::Utc::now();
@@ -279,6 +281,7 @@ async fn get_realm(
     State(repo): State<AppState>,
     Path(realm_id): Path<String>,
 ) -> Result<Json<Realm>, ApiError> {
+    info!("Getting realm: {}", realm_id);
     validate_id(&realm_id)?;
     repo.get_realm(&realm_id).await.map(Json)
 }
@@ -290,6 +293,7 @@ async fn update_realm(
     Path(realm_id): Path<String>,
     Json(payload): Json<UpdateRealm>,
 ) -> Result<Json<Realm>, ApiError> {
+    info!("Updating realm: {}", realm_id);
     validate_id(&realm_id)?;
     let mut attempts = 0;
     loop {
@@ -334,6 +338,7 @@ async fn delete_realm(
     State(repo): State<AppState>,
     Path(realm_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    info!("Deleting realm: {}", realm_id);
     validate_id(&realm_id)?;
     let deleted = repo.delete_realm(&realm_id).await?;
     if deleted {
@@ -350,6 +355,7 @@ async fn list_services(
     State(repo): State<AppState>,
     Path((realm_id, hub_id)): Path<(String, String)>,
 ) -> Result<Json<Vec<Service>>, ApiError> {
+    info!("Listing services in realm: {}, hub: {}", realm_id, hub_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     let services = repo.list_services(&realm_id, &hub_id).await?;
@@ -366,6 +372,7 @@ async fn create_service(
     Path((realm_id, hub_id)): Path<(String, String)>,
     Json(payload): Json<NewService>,
 ) -> Result<(StatusCode, Json<Service>), ApiError> {
+    info!("Creating service: {} in realm: {}, hub: {}", payload.name, realm_id, hub_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     validate_id(&payload.name)?;
@@ -397,6 +404,7 @@ async fn get_service(
     State(repo): State<AppState>,
     Path((realm_id, hub_id, service_id)): Path<(String, String, String)>,
 ) -> Result<Json<Service>, ApiError> {
+    info!("Getting service: {} in realm: {}, hub: {}", service_id, realm_id, hub_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     validate_id(&service_id)?;
@@ -413,6 +421,7 @@ async fn update_service(
     Path((realm_id, hub_id, service_id)): Path<(String, String, String)>,
     Json(payload): Json<UpdateService>,
 ) -> Result<Json<Service>, ApiError> {
+    info!("Updating service: {} in realm: {}, hub: {}", service_id, realm_id, hub_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     validate_id(&service_id)?;
@@ -465,6 +474,7 @@ async fn delete_service(
     State(repo): State<AppState>,
     Path((realm_id, hub_id, service_id)): Path<(String, String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    info!("Deleting service: {} in realm: {}, hub: {}", service_id, realm_id, hub_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     validate_id(&service_id)?;
@@ -483,6 +493,7 @@ async fn list_hubs(
     State(repo): State<AppState>,
     Path(realm_id): Path<String>,
 ) -> Result<Json<Vec<Hub>>, ApiError> {
+    info!("Listing hubs in realm: {}", realm_id);
     validate_id(&realm_id)?;
     let mut hubs = repo.list_hubs(&realm_id).await?;
     for hub in &mut hubs {
@@ -497,6 +508,7 @@ async fn create_hub(
     Path(realm_id): Path<String>,
     Json(payload): Json<NewHub>,
 ) -> Result<(StatusCode, Json<Hub>), ApiError> {
+    info!("Creating hub: {} in realm: {}", payload.name, realm_id);
     validate_id(&realm_id)?;
     validate_id(&payload.name)?;
 
@@ -528,6 +540,7 @@ async fn get_hub(
     State(repo): State<AppState>,
     Path((realm_id, hub_id)): Path<(String, String)>,
 ) -> Result<Json<Hub>, ApiError> {
+    info!("Getting hub: {} in realm: {}", hub_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     let mut hub = repo.get_hub(&realm_id, &hub_id).await?;
@@ -543,6 +556,7 @@ async fn update_hub(
     Path((realm_id, hub_id)): Path<(String, String)>,
     Json(payload): Json<UpdateHub>,
 ) -> Result<Json<Hub>, ApiError> {
+    info!("Updating hub: {} in realm: {}", hub_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     let mut attempts = 0;
@@ -589,6 +603,7 @@ async fn delete_hub(
     State(repo): State<AppState>,
     Path((realm_id, hub_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    info!("Deleting hub: {} in realm: {}", hub_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&hub_id)?;
     let deleted = repo.delete_hub(&realm_id, &hub_id).await?;
@@ -618,6 +633,7 @@ async fn list_routing_chains(
     State(repo): State<AppState>,
     Path(realm_id): Path<String>,
 ) -> Result<Json<Vec<RoutingChain>>, ApiError> {
+    info!("Listing routing chains in realm: {}", realm_id);
     validate_id(&realm_id)?;
     let mut rchains = repo.list_routing_chains(&realm_id).await?;
     for rchain in &mut rchains {
@@ -632,6 +648,7 @@ async fn create_routing_chain(
     Path(realm_id): Path<String>,
     Json(payload): Json<NewRoutingChain>,
 ) -> Result<(StatusCode, Json<RoutingChain>), ApiError> {
+    info!("Creating routing chain: {:?} in realm: {}", payload.name, realm_id);
     validate_id(&realm_id)?;
     let name = payload.name.unwrap_or_else(|| "default".to_string());
     validate_id(&name)?;
@@ -660,6 +677,7 @@ async fn get_routing_chain(
     State(repo): State<AppState>,
     Path((realm_id, routing_chain_id)): Path<(String, String)>,
 ) -> Result<Json<RoutingChain>, ApiError> {
+    info!("Getting routing chain: {} in realm: {}", routing_chain_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
     let mut rchain = repo.get_routing_chain(&realm_id, &routing_chain_id).await?;
@@ -678,6 +696,7 @@ async fn update_routing_chain(
     Path((realm_id, routing_chain_id)): Path<(String, String)>,
     Json(payload): Json<UpdateRoutingChain>,
 ) -> Result<Json<RoutingChain>, ApiError> {
+    info!("Updating routing chain: {} in realm: {}", routing_chain_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
     let mut attempts = 0;
@@ -725,6 +744,7 @@ async fn delete_routing_chain(
     State(repo): State<AppState>,
     Path((realm_id, routing_chain_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    info!("Deleting routing chain: {} in realm: {}", routing_chain_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&routing_chain_id)?;
     let deleted = repo
@@ -744,6 +764,7 @@ async fn list_virtual_hosts(
     State(repo): State<AppState>,
     Path(realm_id): Path<String>,
 ) -> Result<Json<Vec<VirtualHostResponse>>, ApiError> {
+    info!("Listing virtual hosts in realm: {}", realm_id);
     validate_id(&realm_id)?;
     let vhosts = repo.list_virtual_hosts(&realm_id).await?;
 
@@ -824,6 +845,7 @@ async fn create_virtual_host(
     Path(realm_id): Path<String>,
     Json(payload): Json<NewVirtualHost>,
 ) -> Result<(StatusCode, Json<VirtualHostResponse>), ApiError> {
+    info!("Creating virtual host: {} in realm: {}", payload.name, realm_id);
     validate_id(&realm_id)?;
     validate_id(&payload.name)?;
 
@@ -858,6 +880,7 @@ async fn get_virtual_host(
     State(repo): State<AppState>,
     Path((realm_id, virtual_host_id)): Path<(String, String)>,
 ) -> Result<Json<VirtualHostResponse>, ApiError> {
+    info!("Getting virtual host: {} in realm: {}", virtual_host_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&virtual_host_id)?;
     let vhost = repo.get_virtual_host(&realm_id, &virtual_host_id).await?;
@@ -874,6 +897,7 @@ async fn update_virtual_host(
     Path((realm_id, virtual_host_id)): Path<(String, String)>,
     Json(payload): Json<UpdateVirtualHost>,
 ) -> Result<Json<VirtualHostResponse>, ApiError> {
+    info!("Updating virtual host: {} in realm: {}", virtual_host_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&virtual_host_id)?;
     let mut attempts = 0;
@@ -927,6 +951,7 @@ async fn delete_virtual_host(
     State(repo): State<AppState>,
     Path((realm_id, virtual_host_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    info!("Deleting virtual host: {} in realm: {}", virtual_host_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&virtual_host_id)?;
     let deleted = repo
@@ -946,6 +971,7 @@ async fn list_subdomains(
     State(repo): State<AppState>,
     Path((realm_id, zone_id)): Path<(String, String)>,
 ) -> Result<Json<Vec<Subdomain>>, ApiError> {
+    info!("Listing subdomains in realm: {}, zone: {}", realm_id, zone_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     let mut subdomains = repo.list_subdomains(&realm_id, &zone_id).await?;
@@ -963,6 +989,7 @@ async fn create_subdomain(
     Path((realm_id, zone_id)): Path<(String, String)>,
     Json(payload): Json<NewSubdomain>,
 ) -> Result<(StatusCode, Json<Subdomain>), ApiError> {
+    info!("Creating subdomain: {} in realm: {}, zone: {}", payload.name, realm_id, zone_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     validate_id(&payload.name)?;
@@ -993,6 +1020,7 @@ async fn get_subdomain(
     State(repo): State<AppState>,
     Path((realm_id, zone_id, subdomain_id)): Path<(String, String, String)>,
 ) -> Result<Json<Subdomain>, ApiError> {
+    info!("Getting subdomain: {} in realm: {}, zone: {}", subdomain_id, realm_id, zone_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     validate_id(&subdomain_id)?;
@@ -1011,6 +1039,7 @@ async fn update_subdomain(
     Path((realm_id, zone_id, subdomain_id)): Path<(String, String, String)>,
     Json(payload): Json<UpdateSubdomain>,
 ) -> Result<Json<Subdomain>, ApiError> {
+    info!("Updating subdomain: {} in realm: {}, zone: {}", subdomain_id, realm_id, zone_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     validate_id(&subdomain_id)?;
@@ -1062,6 +1091,7 @@ async fn delete_subdomain(
     State(repo): State<AppState>,
     Path((realm_id, zone_id, subdomain_id)): Path<(String, String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    info!("Deleting subdomain: {} in realm: {}, zone: {}", subdomain_id, realm_id, zone_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     validate_id(&subdomain_id)?;
@@ -1082,6 +1112,7 @@ async fn list_zones(
     State(repo): State<AppState>,
     Path(realm_id): Path<String>,
 ) -> Result<Json<Vec<Zone>>, ApiError> {
+    info!("Listing zones in realm: {}", realm_id);
     validate_id(&realm_id)?;
     let mut zones = repo.list_zones(&realm_id).await?;
     for zone in &mut zones {
@@ -1096,6 +1127,7 @@ async fn create_zone(
     Path(realm_id): Path<String>,
     Json(payload): Json<NewZone>,
 ) -> Result<(StatusCode, Json<Zone>), ApiError> {
+    info!("Creating zone: {} in realm: {}", payload.name, realm_id);
     validate_id(&realm_id)?;
     validate_id(&payload.name)?;
 
@@ -1123,6 +1155,7 @@ async fn get_zone(
     State(repo): State<AppState>,
     Path((realm_id, zone_id)): Path<(String, String)>,
 ) -> Result<Json<Zone>, ApiError> {
+    info!("Getting zone: {} in realm: {}", zone_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     let mut zone = repo.get_zone(&realm_id, &zone_id).await?;
@@ -1137,6 +1170,7 @@ async fn update_zone(
     Path((realm_id, zone_id)): Path<(String, String)>,
     Json(payload): Json<UpdateZone>,
 ) -> Result<Json<Zone>, ApiError> {
+    info!("Updating zone: {} in realm: {}", zone_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     let mut attempts = 0;
@@ -1182,6 +1216,7 @@ async fn delete_zone(
     State(repo): State<AppState>,
     Path((realm_id, zone_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    info!("Deleting zone: {} in realm: {}", zone_id, realm_id);
     validate_id(&realm_id)?;
     validate_id(&zone_id)?;
     let deleted = repo.delete_zone(&realm_id, &zone_id).await?;
