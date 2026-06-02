@@ -75,7 +75,9 @@ The primary interface for automation and infrastructure-as-code.
 
 To verify the API is active, fetch the list of realms:
 
-    curl http://localhost:3000/v1/realms | jq
+```bash
+curl http://localhost:3000/v1/realms | jq
+```
 
 ## Configuration Management
 
@@ -93,16 +95,6 @@ For runtime updates or programmatic setup, use the REST API. A sample script is 
 **Applying configuration via script:**
 The `scripts/apply_config.sh` script builds a sample realm (`quench`) by sending JSON payloads to the running server.
 
-    ./scripts/apply_config.sh
-
-## Directory Structure
-
-    .
-    ├── conf/                 # Startup configuration files (config.yaml)
-    ├── scripts/              # Management scripts (apply_config.sh)
-    ├── src/                  # Main Rust application source code
-    ├── webroot/              # Static assets for the web UI
-    ├── Dockerfile            # Packaging the binary into a scratch container
-    ├── docker-compose.yml    # Defines the development environment services
-    ├── README.md             # System overview and entry point
-    └── GETTING_STARTED.md    # This guide
+```bash
+sh ./scripts/apply_config.sh
+```
