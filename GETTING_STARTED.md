@@ -56,7 +56,7 @@ With the backend running, you can now execute the inventory service locally. Thi
 
 ```bash
 # Point to the local etcd and set log level 
-ETCD_ENDPOINTS=http://0.0.0.0:2379 RUST_LOG=debug cargo run
+ETCD_ENDPOINTS=http://127.0.0.1:2379 RUST_LOG=debug cargo run
 ```
 
 ## Usage

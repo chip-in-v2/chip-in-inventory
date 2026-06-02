@@ -3,7 +3,7 @@
 Component of the SPN (Service Provider Network) infrastructure: a secure, virtualized distribution network for enterprise applications. `chip-in inventory` provides central configuration management and distribution.
 
 ## Overview
-`chip-in inventory` serves as the control plane for the SPN system. It stores and distributes authoritative configuration data to `spnhub` and `spngw`. 
+`chip-in inventory` serves as the etcd-backed control plane for the SPN system. It stores and distributes authoritative configuration data to `spnhub` and `spngw`.
 
 ## Key Roles
 - **Configuration Repository**: Centralized management of network topology and service definitions.
