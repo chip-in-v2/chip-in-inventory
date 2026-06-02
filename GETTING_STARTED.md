@@ -28,7 +28,7 @@ docker run -d \
   -v $(pwd)/conf:/conf \
   -v etcd_data_embedded:/etcd-data \
   -e RUST_LOG=info \
-  ghcr.io/srfeo3/chip-in-inventory-embedded-etcd:latest
+  ghcr.io/chip-in-v2/chip-in-inventory-embedded-etcd:latest
 ```
 
 To stop the services started by Docker Compose, run `docker compose down`. For the single container, use `docker stop chip-in-inventory-embedded && docker rm chip-in-inventory-embedded`.

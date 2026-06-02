@@ -10,7 +10,7 @@
 services:
   # The Rust API server
   chip-in-inventory:
-    image: ghcr.io/srfeo3/chip-in-inventory:latest
+    image: ghcr.io/chip-in-v2/chip-in-inventory:latest
     ports:
       - "3000:3000"
     environment:
