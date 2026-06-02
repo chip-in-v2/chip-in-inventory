@@ -9,29 +9,54 @@ This guide focuses on the setup and programmatic interaction with the `chip-in i
 
 ## Local Setup
 
-To get the application running locally, you need to have Docker and Docker Compose installed.
+There are two ways to run the application locally:
 
-1.  **Start the services:**
-    This command will pull the pre-built Rust application image from GitHub Container Registry and start it along with the `etcd` server.
-    On startup, the application automatically loads the initial configuration from `conf/config.yaml` into the database.
+### Option 1: Using Docker Compose (Recommended for Development)
+Starts the inventory and etcd as separate containers. This is useful for development and observing logs from each service.
 
-    ```bash
-    docker compose up -d
-    ```
+```bash
+docker compose up -d
+```
 
-2.  **Stop the services:**
-    To stop and remove the containers, networks, and volumes created by `up`, run:
+### Option 2: Single Container (Embedded etcd)
+Starts both the inventory and etcd inside a single container. Perfect for quick trials or lightweight deployments.
 
-    ```bash
-    docker compose down
-    ```
+```bash
+docker run -d \
+  --name chip-in-inventory-embedded \
+  -p 3000:3000 \
+  -v $(pwd)/conf:/conf \
+  -v etcd_data_embedded:/etcd-data \
+  -e RUST_LOG=info \
+  ghcr.io/srfeo3/chip-in-inventory-embedded-etcd:latest
+```
+
+To stop the services started by Docker Compose, run `docker compose down`. For the single container, use `docker stop chip-in-inventory-embedded && docker rm chip-in-inventory-embedded`.
 
 ## Development
 
-For faster iteration during development or testing, you can run only the `etcd` backend:
+For active development of the `chip-in-inventory` source code, you can run the `etcd` store in a container and execute the Rust application on your local host. This allows for faster compilation and easier debugging.
+
+### 1. Start the etcd backend
+Run a standalone etcd container exposed on localhost:
 
 ```bash
-docker run -d --rm -p 2379:2379 --name etcd-dev quay.io/coreos/etcd:v3.5.14 /usr/local/bin/etcd --advertise-client-urls http://0.0.0.0:2379 --listen-client-urls http://0.0.0.0:2379
+docker run -d --rm \
+  -p 2379:2379 \
+  --name etcd-dev \
+  quay.io/coreos/etcd:v3.5.14 \
+  /usr/local/bin/etcd \
+  --advertise-client-urls http://0.0.0.0:2379 \
+  --listen-client-urls http://0.0.0.0:2379
+```
+
+### 2. Run the application 
+
+With the backend running, you can now execute the inventory service locally. This is the fastest way to test code changes. 
+
+```bash
+# Point to the local etcd and set log level 
+ETCD_ENDPOINTS=http://0.0.0.0:2379 RUST_LOG=debug cargo run
 ```
 
 ## Usage

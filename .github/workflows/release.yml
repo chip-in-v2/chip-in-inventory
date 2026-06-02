@@ -34,6 +34,33 @@ jobs:
       - name: Strip binary
         run: strip target/x86_64-unknown-linux-musl/release/chip-in-inventory
 
+      - name: Generate embedded etcd files
+        run: |
+          cat <<EOF > Dockerfile.embedded
+          FROM quay.io/coreos/etcd:v3.5.14 AS etcd
+          FROM alpine:3.18
+          RUN apk add --no-cache bash ca-certificates
+          COPY --from=etcd /usr/local/bin/etcd /usr/local/bin/etcd
+          COPY --from=etcd /usr/local/bin/etcdctl /usr/local/bin/etcdctl
+          COPY target/x86_64-unknown-linux-musl/release/chip-in-inventory /usr/local/bin/chip-in-inventory
+          COPY entrypoint.sh /entrypoint.sh
+          RUN chmod +x /entrypoint.sh
+          ENTRYPOINT ["/entrypoint.sh"]
+          EOF
+
+          cat <<'EOF' > entrypoint.sh
+          #!/bin/bash
+          set -e
+          etcd --data-dir /etcd-data \
+               --listen-client-urls http://0.0.0.0:2379 \
+               --advertise-client-urls http://127.0.0.1:2379 &
+          until bash -c "echo > /dev/tcp/127.0.0.1/2379" 2>/dev/null; do
+            sleep 1
+          done
+          export ETCD_ENDPOINTS=http://127.0.0.1:2379
+          exec chip-in-inventory
+          EOF
+
       - name: Prepare assets
         run: |
           mkdir -p release-assets
@@ -64,6 +91,14 @@ jobs:
           tags: |
             type=raw,value=latest
 
+      - name: Extract Docker metadata (embedded)
+        id: meta-embedded
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-embedded-etcd
+          tags: |
+            type=raw,value=latest
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -77,3 +112,11 @@ jobs:
           context: release-assets
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Build and push embedded Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.embedded
+          push: true
+          tags: ${{ steps.meta-embedded.outputs.tags }}
